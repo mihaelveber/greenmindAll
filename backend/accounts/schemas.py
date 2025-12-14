@@ -1,0 +1,255 @@
+from ninja import Schema
+from typing import Optional
+from datetime import datetime
+
+class UserSchema(Schema):
+    id: int
+    email: str
+    username: str
+    avatar: Optional[str] = None
+    oauth_provider: Optional[str] = None
+    is_active: bool
+    date_joined: datetime
+    wizard_completed: bool = False
+    company_type: Optional[str] = None
+    website_url: Optional[str] = None
+
+class LoginSchema(Schema):
+    email: str
+    password: str
+
+class RegisterSchema(Schema):
+    email: str
+    username: str
+    password: str
+    password_confirm: str
+
+class TokenSchema(Schema):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+    user: UserSchema
+
+class OAuthCallbackSchema(Schema):
+    code: str
+    state: Optional[str] = None
+
+class MessageSchema(Schema):
+    message: str
+    success: bool = True
+
+class CompanyTypeSchema(Schema):
+    company_type: str
+    website_url: Optional[str] = None
+
+class DocumentSchema(Schema):
+    id: int
+    file_name: str
+    file_size: int
+    file_type: str
+    uploaded_at: datetime
+    is_global: bool = False
+    success: bool = True
+
+
+class ESRSCategorySchema(Schema):
+    id: int
+    name: str
+    code: str
+    description: str
+    order: int
+
+
+class ESRSDisclosureSchema(Schema):
+    id: int
+    code: str
+    name: str
+    description: str
+    requirement_text: str
+    is_mandatory: bool
+    order: int
+    parent_id: Optional[int] = None
+    sub_disclosures: list['ESRSDisclosureSchema'] = []
+
+
+class ESRSStandardSchema(Schema):
+    id: int
+    code: str
+    name: str
+    description: str
+    order: int
+    category: ESRSCategorySchema
+    ai_prompt: Optional[str] = None
+
+
+class ESRSStandardDetailSchema(Schema):
+    id: int
+    code: str
+    name: str
+    description: str
+    order: int
+    category: ESRSCategorySchema
+    disclosures: list[ESRSDisclosureSchema]
+
+
+class SaveNotesSchema(Schema):
+    disclosure_id: int
+    notes: str
+
+class SaveManualAnswerSchema(Schema):
+    disclosure_id: int
+    manual_answer: str
+
+
+class SaveFinalAnswerSchema(Schema):
+    disclosure_id: int
+    final_answer: str
+
+
+class LinkDocumentSchema(Schema):
+    disclosure_id: int
+    document_id: int
+    notes: Optional[str] = None
+    is_excluded: Optional[bool] = False
+
+
+class GetAIAnswerSchema(Schema):
+    disclosure_id: int
+    ai_temperature: float = 0.2
+
+
+class ESRSUserResponseSchema(Schema):
+    id: int
+    disclosure_id: int
+    notes: Optional[str] = None
+    manual_answer: Optional[str] = None
+    is_completed: bool
+    ai_answer: Optional[str] = None
+    final_answer: Optional[str] = None
+    ai_sources: Optional[dict] = None
+    # Chart & Analytics fields
+    numeric_data: Optional[list] = None
+    chart_data: Optional[list] = None  # List of {type, title, data, image_base64}
+    table_data: Optional[list] = None  # List of {title, headers, rows}
+    # AI Generation Settings
+    ai_temperature: float = 0.2
+    confidence_score: Optional[float] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class DocumentEvidenceSchema(Schema):
+    id: int
+    document_id: int
+    document: DocumentSchema  # Full document object
+    linked_at: datetime
+    notes: Optional[str] = None
+
+
+class AITaskStatusSchema(Schema):
+    id: int
+    task_id: str
+    task_type: str
+    status: str
+    progress: int
+    total_items: int
+    completed_items: int
+    result: Optional[str] = None
+    error_message: Optional[str] = None
+    disclosure_code: Optional[str] = None
+    standard_code: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class StartAITaskResponse(Schema):
+    task_id: str
+    message: str
+
+
+class UpdateNotesSchema(Schema):
+    notes: Optional[str] = None
+    manual_answer: Optional[str] = None
+    ai_temperature: Optional[float] = None
+
+class GenerateImageSchema(Schema):
+    prompt: str
+
+
+# Version System Schemas
+class StartConversationSchema(Schema):
+    item_type: str  # TEXT, CHART, IMAGE, TABLE
+    item_id: int
+    disclosure_id: int
+
+
+class SendMessageSchema(Schema):
+    message: str  # User's refinement instruction
+
+
+class ConversationMessageSchema(Schema):
+    role: str
+    content: str
+    timestamp: str
+
+
+class ConversationSchema(Schema):
+    id: str
+    item_type: str
+    item_id: int
+    messages: list[ConversationMessageSchema]
+    created_at: str
+
+
+class VersionSchema(Schema):
+    id: str
+    version_number: int
+    change_type: str
+    change_description: str
+    content: dict
+    is_selected: bool
+    created_at: str
+    created_by_user: bool
+    parent_version_id: Optional[str] = None
+    conversation_id: Optional[str] = None
+
+
+class VersionTreeNodeSchema(Schema):
+    version: VersionSchema
+    children: list['VersionTreeNodeSchema'] = []
+
+
+class RefineTextSchema(Schema):
+    disclosure_id: int
+    current_version_id: Optional[str] = None  # If None, use selected version
+    instruction: str  # "make it more formal", "add more details", etc
+
+
+class RefineChartSchema(Schema):
+    disclosure_id: int
+    chart_id: str
+    current_version_id: Optional[str] = None
+    instruction: str
+
+
+class ToggleChartSelectionSchema(Schema):
+    disclosure_id: int
+    chart_id: str
+
+
+class RefineImageSchema(Schema):
+    disclosure_id: int  
+    image_id: str
+    current_version_id: Optional[str] = None
+    instruction: str
+
+
+class RefineTableSchema(Schema):
+    disclosure_id: int
+    table_id: str
+    current_version_id: Optional[str] = None
+    instruction: str
+
+
+class SelectVersionSchema(Schema):
+    version_id: str

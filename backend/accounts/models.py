@@ -74,45 +74,65 @@ class Document(models.Model):
 
 
 class ESRSCategory(models.Model):
-    """ESRS kategorije: Environmental, Social, Governance, Cross-cutting"""
-    name = models.CharField(max_length=50)  # Environmental, Social, Governance, Cross-cutting
-    code = models.CharField(max_length=10, unique=True)  # E, S, G, CC
+    """Generic Standard Category - supports ESRS, ISO 9001, and other standards"""
+    STANDARD_TYPE_CHOICES = [
+        ('ESRS', 'ESRS - European Sustainability Reporting Standards'),
+        ('ISO9001', 'ISO 9001 - Quality Management System'),
+    ]
+    
+    standard_type = models.CharField(max_length=20, choices=STANDARD_TYPE_CHOICES, default='ESRS', help_text='Type of standard')
+    name = models.CharField(max_length=50)  # Environmental, Social, Governance, Cross-cutting (ESRS) OR Context, Leadership, etc. (ISO)
+    code = models.CharField(max_length=10)  # E, S, G, CC (ESRS) OR 4, 5, 6, 7, 8, 9, 10 (ISO)
     description = models.TextField(blank=True)
     order = models.IntegerField(default=0)
     translations = models.JSONField(default=dict, blank=True)  # {"sl": {"name": "...", "description": "..."}, "de": {...}}
     
     def __str__(self):
-        return f"{self.code} - {self.name}"
+        return f"[{self.standard_type}] {self.code} - {self.name}"
     
     class Meta:
         db_table = 'esrs_categories'
-        ordering = ['order']
-        verbose_name_plural = 'ESRS Categories'
+        ordering = ['standard_type', 'order']
+        verbose_name_plural = 'Standard Categories'
+        unique_together = [['code', 'standard_type']]  # Allow same code for different standards
 
 
 class ESRSStandard(models.Model):
-    """ESRS standardi: E1, E2, S1, G1, itd."""
+    """Generic Standard - supports ESRS (E1, E2, S1) and ISO 9001 (4.1, 4.2, 5.1) standards"""
+    STANDARD_TYPE_CHOICES = [
+        ('ESRS', 'ESRS - European Sustainability Reporting Standards'),
+        ('ISO9001', 'ISO 9001 - Quality Management System'),
+    ]
+    
+    standard_type = models.CharField(max_length=20, choices=STANDARD_TYPE_CHOICES, default='ESRS', help_text='Type of standard')
     category = models.ForeignKey(ESRSCategory, on_delete=models.CASCADE, related_name='standards')
-    code = models.CharField(max_length=10, unique=True)  # E1, E2, S1, G1, ESRS 1, ESRS 2
-    name = models.CharField(max_length=200)  # Climate change, Pollution, itd.
+    code = models.CharField(max_length=10)  # E1, E2, S1, G1, ESRS 1, ESRS 2 (ESRS) OR 4.1, 5.1, etc. (ISO)
+    name = models.CharField(max_length=200)  # Climate change, Pollution (ESRS) OR Context of organization, Leadership (ISO)
     description = models.TextField()
     order = models.IntegerField(default=0)
     translations = models.JSONField(default=dict, blank=True)  # {"sl": {"name": "...", "description": "..."}, "de": {...}}
     ai_prompt = models.TextField(blank=True, null=True)  # Custom AI prompt template for this standard
     
     def __str__(self):
-        return f"{self.code}: {self.name}"
+        return f"[{self.standard_type}] {self.code}: {self.name}"
     
     class Meta:
         db_table = 'esrs_standards'
-        ordering = ['category__order', 'order']
+        ordering = ['standard_type', 'category__order', 'order']
+        unique_together = [['code', 'standard_type']]  # Allow same code for different standards
 
 
 class ESRSDisclosure(models.Model):
-    """Disclosure Requirements za vsak standard"""
+    """Generic Disclosure/Requirement - supports ESRS disclosures and ISO 9001 requirements"""
+    STANDARD_TYPE_CHOICES = [
+        ('ESRS', 'ESRS - European Sustainability Reporting Standards'),
+        ('ISO9001', 'ISO 9001 - Quality Management System'),
+    ]
+    
+    standard_type = models.CharField(max_length=20, choices=STANDARD_TYPE_CHOICES, default='ESRS', help_text='Type of standard')
     standard = models.ForeignKey(ESRSStandard, on_delete=models.CASCADE, related_name='disclosures')
     parent = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True, related_name='sub_disclosures')  # Za hierarhijo
-    code = models.CharField(max_length=20)  # E1-1, E1-2, E1-3a, S1-1, itd.
+    code = models.CharField(max_length=20)  # E1-1, E1-2, E1-3a, S1-1 (ESRS) OR 4.1.1, 5.1.1 (ISO)
     name = models.CharField(max_length=500)
     description = models.TextField()
     requirement_text = models.TextField()  # Celotno besedilo zahteve
@@ -122,12 +142,12 @@ class ESRSDisclosure(models.Model):
     ai_prompt = models.TextField(blank=True, null=True)  # Custom AI prompt template (overrides requirement_text if set)
     
     def __str__(self):
-        return f"{self.code}: {self.name}"
+        return f"[{self.standard_type}] {self.code}: {self.name}"
     
     class Meta:
         db_table = 'esrs_disclosures'
-        ordering = ['standard', 'order']
-        unique_together = ['standard', 'code']
+        ordering = ['standard_type', 'standard', 'order']
+        unique_together = [['standard', 'code']]  # Unique within same standard
 
 
 class ESRSUserResponse(models.Model):

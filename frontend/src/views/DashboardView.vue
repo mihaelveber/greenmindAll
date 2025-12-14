@@ -89,8 +89,45 @@
               </n-card>
             </n-gi>
 
+            <!-- Standards Overview -->
             <n-gi>
-              <n-card title="🌿 ESRS Compliance Progress" :bordered="false">
+              <n-card title="📋 Compliance Standards Overview" :bordered="false">
+                <n-spin :show="loadingStats">
+                  <div v-if="standardTypes.length === 0" style="padding: 24px; text-align: center;">
+                    <n-text depth="3">Loading standards...</n-text>
+                  </div>
+                  <n-grid v-else :cols="3" :x-gap="24" :y-gap="24" responsive="screen">
+                    <n-gi v-for="standard in standardTypes" :key="standard.type">
+                      <div class="stat-card-circle" @click="navigateToStandard(standard.type)">
+                        <n-space vertical :size="16" align="center">
+                          <div class="circle-progress-wrapper">
+                            <n-progress
+                              type="circle"
+                              :percentage="standard.completion_percentage"
+                              :stroke-width="10"
+                              :color="getProgressColor(standard.completion_percentage)"
+                              :rail-color="'rgba(255, 255, 255, 0.1)'"
+                              :style="{ width: '160px', height: '160px' }"
+                            >
+                              <div class="progress-content">
+                                <div style="font-size: 48px; margin-bottom: 8px;">{{ standard.icon }}</div>
+                                <n-text strong style="font-size: 28px; color: #54d944;">{{ standard.completion_percentage.toFixed(0) }}%</n-text>
+                                <n-text depth="3" style="font-size: 12px; margin-top: 4px;">{{ standard.answered_requirements }}/{{ standard.total_requirements }}</n-text>
+                              </div>
+                            </n-progress>
+                          </div>
+                          <n-text strong style="font-size: 16px; text-align: center;">{{ standard.name }}</n-text>
+                          <n-text depth="3" style="font-size: 12px; text-align: center;">{{ standard.description }}</n-text>
+                        </n-space>
+                      </div>
+                    </n-gi>
+                  </n-grid>
+                </n-spin>
+              </n-card>
+            </n-gi>
+
+            <n-gi>
+              <n-card title="📊 Detailed Progress by Category" :bordered="false">
                 <n-spin :show="loadingStats">
                   <div v-if="statistics.length === 0" style="padding: 24px; text-align: center;">
                     <n-text depth="3">Loading statistics...</n-text>
@@ -248,6 +285,16 @@ interface CategoryStatistic {
   completion_percentage: number
 }
 
+interface StandardType {
+  type: string
+  name: string
+  description: string
+  icon: string
+  total_requirements: number
+  answered_requirements: number
+  completion_percentage: number
+}
+
 const router = useRouter()
 const authStore = useAuthStore()
 const message = useMessage()
@@ -256,6 +303,7 @@ const { t } = useI18n()
 const activeKey = ref('dashboard')
 const loadingStats = ref(false)
 const statistics = ref<CategoryStatistic[]>([])
+const standardTypes = ref<StandardType[]>([])
 
 // Export states
 const exportingPDF = ref(false)
@@ -304,33 +352,45 @@ const languageOptions = [
   { label: 'Deutsch', value: 'de' }
 ]
 
-const menuOptions = computed(() => [
-  {
-    label: t('nav.dashboard'),
-    key: 'dashboard',
-    icon: () => h(NIcon, null, { default: () => h(HomeOutline) })
-  },
-  {
-    label: 'ESRS Reports',
-    key: 'esrs',
+const menuOptions = computed(() => {
+  const baseMenu = [
+    {
+      label: t('nav.dashboard'),
+      key: 'dashboard',
+      icon: () => h(NIcon, null, { default: () => h(HomeOutline) })
+    }
+  ]
+  
+  // Add dynamic standard type menus
+  const standardMenus = standardTypes.value.map(standard => ({
+    label: `${standard.icon} ${standard.name}`,
+    key: `standard-${standard.type}`,
     icon: () => h(NIcon, null, { default: () => h(ClipboardOutline) })
-  },
-  {
-    label: t('nav.documents'),
-    key: 'documents',
-    icon: () => h(NIcon, null, { default: () => h(DocumentTextOutline) })
-  },
-  {
-    label: t('nav.profile'),
-    key: 'profile',
-    icon: () => h(NIcon, null, { default: () => h(PersonOutline) })
-  },
-  {
-    label: t('nav.settings'),
-    key: 'settings',
-    icon: () => h(NIcon, null, { default: () => h(SettingsOutline) })
-  }
-])
+  }))
+  
+  console.log('🎯 Menu - standardTypes:', standardTypes.value.length, 'items')
+  console.log('🎯 Menu - generated:', standardMenus.length, 'standard menus')
+  
+  const otherMenus = [
+    {
+      label: t('nav.documents'),
+      key: 'documents',
+      icon: () => h(NIcon, null, { default: () => h(DocumentTextOutline) })
+    },
+    {
+      label: t('nav.profile'),
+      key: 'profile',
+      icon: () => h(NIcon, null, { default: () => h(PersonOutline) })
+    },
+    {
+      label: t('nav.settings'),
+      key: 'settings',
+      icon: () => h(NIcon, null, { default: () => h(SettingsOutline) })
+    }
+  ]
+  
+  return [...baseMenu, ...standardMenus, ...otherMenus]
+})
 
 const userDropdownOptions = [
   {
@@ -352,16 +412,27 @@ const userDropdownOptions = [
 ]
 
 const handleMenuUpdate = (key: string) => {
-  activeKey.value = key
   if (key === 'dashboard') {
+    activeKey.value = 'dashboard'
     router.push('/dashboard')
+  } else if (key.startsWith('standard-')) {
+    activeKey.value = key
+    const standardType = key.replace('standard-', '')
+    router.push(`/standards/${standardType}`)
   } else if (key === 'esrs') {
-    router.push('/esrs')
+    // Legacy support - redirect to ESRS standard
+    activeKey.value = 'standard-ESRS'
+    router.push('/standards/ESRS')
   } else if (key === 'documents') {
+    activeKey.value = 'documents'
     router.push('/documents')
   } else if (key === 'settings') {
     showSettingsModal.value = true
+  } else if (key === 'profile') {
+    activeKey.value = 'profile'
+    message.info('Profile page coming soon')
   } else {
+    activeKey.value = key
     message.info(`Navigacija na: ${key}`)
   }
 }
@@ -421,8 +492,23 @@ const loadStatistics = async () => {
   }
 }
 
+const loadStandardTypes = async () => {
+  try {
+    const response = await api.get('/standards/types')
+    standardTypes.value = response.data
+    console.log('📊 Loaded standard types:', response.data)
+  } catch (error) {
+    message.error('Failed to load standard types')
+    console.error(error)
+  }
+}
+
 const navigateToCategory = (categoryId: number) => {
   router.push({ path: '/esrs', query: { category: categoryId } })
+}
+
+const navigateToStandard = (standardType: string) => {
+  router.push(`/standards/${standardType}`)
 }
 
 const getProgressColor = (percentage: number) => {
@@ -573,7 +659,7 @@ onMounted(async () => {
     document.documentElement.classList.remove('dark')
   }
   
-  await loadStatistics()
+  await Promise.all([loadStatistics(), loadStandardTypes()])
   startPolling()
 })
 

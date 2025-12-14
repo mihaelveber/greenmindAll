@@ -39,10 +39,14 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
     {
-      path: '/esrs',
-      name: 'esrs',
-      component: () => import('../views/ESRSView.vue'),
+      path: '/standards/:standardType',
+      name: 'standards',
+      component: () => import('../views/StandardView.vue'),
       meta: { requiresAuth: true }
+    },
+    {
+      path: '/esrs',
+      redirect: '/standards/ESRS'
     },
     {
       path: '/admin',

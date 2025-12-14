@@ -524,6 +524,32 @@
         </n-space>
       </template>
     </n-modal>
+
+    <!-- Add Standard to User Modal -->
+    <n-modal
+      v-model:show="showAddStandardModal"
+      preset="dialog"
+      title="Add Standard to User"
+      positive-text="Add"
+      negative-text="Cancel"
+      @positive-click="addStandardToUser"
+    >
+      <n-space vertical :size="16">
+        <n-alert type="info" :bordered="false">
+          Add a compliance standard to <strong>{{ editingUser?.email }}</strong>
+        </n-alert>
+        
+        <n-select
+          v-model:value="selectedNewStandard"
+          :options="availableStandards"
+          placeholder="Select a standard"
+        />
+        
+        <n-text depth="3" style="font-size: 12px;">
+          Leave empty to allow all standards
+        </n-text>
+      </n-space>
+    </n-modal>
   </div>
 </template>
 
@@ -597,6 +623,33 @@ const userColumns: DataTableColumns<any> = [
     }
   },
   {
+    title: 'Allowed Standards',
+    key: 'allowed_standards',
+    render: (row) => {
+      const standards = row.allowed_standards || []
+      if (standards.length === 0) {
+        return h(NTag, { type: 'success', size: 'small' }, { default: () => 'All Standards' })
+      }
+      return h(NSpace, { size: 4 }, () => 
+        standards.map((std: string) => 
+          h(NTag, { 
+            type: 'info', 
+            size: 'small',
+            closable: true,
+            onClose: () => removeStandardFromUser(row.id, std)
+          }, { 
+            default: () => std === 'ESRS' ? '🌍 ESRS' : std === 'ISO9001' ? '🏆 ISO 9001' : std 
+          })
+        ).concat([
+          h(NButton, {
+            size: 'tiny',
+            onClick: () => openAddStandardModal(row)
+          }, { default: () => '+' })
+        ])
+      )
+    }
+  },
+  {
     title: 'Wizard',
     key: 'wizard_completed',
     render: (row) => {
@@ -649,6 +702,15 @@ const systemSettings = ref({
 const loadingRAG = ref(false)
 const ragOverview = ref<any>({})
 const embeddingModels = ref<any[]>([])
+
+// User Standards Management
+const showAddStandardModal = ref(false)
+const editingUser = ref<any>(null)
+const availableStandards = [
+  { value: 'ESRS', label: '🌍 ESRS Reporting' },
+  { value: 'ISO9001', label: '🏆 ISO 9001:2015' }
+]
+const selectedNewStandard = ref<string | null>(null)
 
 const embeddingColumns: DataTableColumns<any> = [
   {
@@ -957,6 +1019,51 @@ const loadUserESRSProgress = async (userId: number) => {
 
 const formatDate = (dateStr: string) => {
   return new Date(dateStr).toLocaleString()
+}
+
+// User Standards Management Functions
+const openAddStandardModal = (user: any) => {
+  editingUser.value = user
+  selectedNewStandard.value = null
+  showAddStandardModal.value = true
+}
+
+const addStandardToUser = async () => {
+  if (!editingUser.value || !selectedNewStandard.value) return
+  
+  const currentStandards = editingUser.value.allowed_standards || []
+  if (currentStandards.includes(selectedNewStandard.value)) {
+    message.warning('Standard already added')
+    return
+  }
+  
+  const updatedStandards = [...currentStandards, selectedNewStandard.value]
+  
+  try {
+    await api.put(`/admin/users/${editingUser.value.id}/allowed-standards`, updatedStandards)
+    message.success('Standard added successfully')
+    showAddStandardModal.value = false
+    await loadUsers() // Reload users
+  } catch (error) {
+    console.error('Failed to add standard:', error)
+    message.error('Failed to add standard')
+  }
+}
+
+const removeStandardFromUser = async (userId: number, standardToRemove: string) => {
+  const user = users.value.find(u => u.id === userId)
+  if (!user) return
+  
+  const updatedStandards = (user.allowed_standards || []).filter((s: string) => s !== standardToRemove)
+  
+  try {
+    await api.put(`/admin/users/${userId}/allowed-standards`, updatedStandards)
+    message.success('Standard removed successfully')
+    await loadUsers() // Reload users
+  } catch (error) {
+    console.error('Failed to remove standard:', error)
+    message.error('Failed to remove standard')
+  }
 }
 
 onMounted(() => {

@@ -10,7 +10,8 @@ from accounts.schemas import (
     SaveNotesSchema, SaveManualAnswerSchema, SaveFinalAnswerSchema, LinkDocumentSchema, GetAIAnswerSchema,
     ESRSUserResponseSchema, DocumentEvidenceSchema,
     AITaskStatusSchema, StartAITaskResponse, UpdateNotesSchema, GenerateImageSchema,
-    StartConversationSchema, SendMessageSchema, SelectVersionSchema, ToggleChartSelectionSchema
+    StartConversationSchema, SendMessageSchema, SelectVersionSchema, ToggleChartSelectionSchema,
+    StandardTypeSchema, CategoryWithProgressSchema
 )
 from django.contrib.auth import get_user_model, authenticate
 from django.contrib.auth.hashers import make_password
@@ -513,6 +514,129 @@ async def toggle_document_global(request, document_id: int):
         return JsonResponse({"message": "Document not found"}, status=404)
 
 
+# ========== DYNAMIC STANDARDS ENDPOINTS ==========
+
+@api.get("/standards/types", response=list[StandardTypeSchema], auth=JWTAuth())
+async def get_standard_types(request):
+    """Get all available standard types with completion statistics"""
+    from accounts.models import ESRSCategory, ESRSStandard, ESRSDisclosure, ESRSUserResponse
+    from accounts.schemas import StandardTypeSchema
+    from django.db.models import Q, Count
+    
+    def calculate_types():
+        # Get unique standard types from database
+        all_categories = ESRSCategory.objects.all()
+        standard_types = list(set(cat.standard_type for cat in all_categories))
+        
+        # Filter by user's allowed standards (if specified)
+        user_allowed = request.auth.allowed_standards or []
+        if user_allowed:  # If empty list, allow all
+            standard_types = [st for st in standard_types if st in user_allowed]
+        
+        result = []
+        
+        # Standard type metadata
+        type_metadata = {
+            'ESRS': {
+                'name': 'ESRS Reporting',
+                'description': 'European Sustainability Reporting Standards',
+                'icon': '🌍'
+            },
+            'ISO9001': {
+                'name': 'ISO 9001:2015',
+                'description': 'Quality Management System',
+                'icon': '🏆'
+            }
+        }
+        
+        for std_type in standard_types:
+            metadata = type_metadata.get(std_type, {
+                'name': std_type,
+                'description': f'{std_type} Standards',
+                'icon': '📋'
+            })
+            
+            # Count total requirements for this type
+            total = ESRSDisclosure.objects.filter(
+                standard__standard_type=std_type
+            ).count()
+            
+            # Count answered requirements for this user and type
+            answered = ESRSUserResponse.objects.filter(
+                user=request.auth,
+                disclosure__standard__standard_type=std_type
+            ).filter(
+                Q(ai_answer__isnull=False) | Q(manual_answer__isnull=False)
+            ).count()
+            
+            percentage = (answered / total * 100) if total > 0 else 0
+            
+            result.append({
+                'type': std_type,
+                'name': metadata['name'],
+                'description': metadata['description'],
+                'icon': metadata['icon'],
+                'total_requirements': total,
+                'answered_requirements': answered,
+                'completion_percentage': round(percentage, 1)
+            })
+        
+        # Sort by type (ESRS first)
+        result.sort(key=lambda x: (x['type'] != 'ESRS', x['type']))
+        return result
+    
+    return await sync_to_async(calculate_types)()
+
+
+@api.get("/standards/{standard_type}/categories", response=list[CategoryWithProgressSchema], auth=JWTAuth())
+async def get_categories_by_type(request, standard_type: str):
+    """Get all categories for a specific standard type with user progress"""
+    from accounts.models import ESRSCategory, ESRSStandard, ESRSDisclosure, ESRSUserResponse
+    from accounts.schemas import CategoryWithProgressSchema
+    from django.db.models import Q
+    
+    def calculate_categories():
+        categories = ESRSCategory.objects.filter(
+            standard_type=standard_type
+        ).order_by('order')
+        
+        result = []
+        
+        for category in categories:
+            # Count total disclosures in this category
+            total_disclosures = ESRSDisclosure.objects.filter(
+                standard__category=category,
+                standard__standard_type=standard_type
+            ).count()
+            
+            # Count answered disclosures
+            answered_disclosures = ESRSUserResponse.objects.filter(
+                user=request.auth,
+                disclosure__standard__category=category,
+                disclosure__standard__standard_type=standard_type
+            ).filter(
+                Q(ai_answer__isnull=False) | Q(manual_answer__isnull=False)
+            ).count()
+            
+            percentage = (answered_disclosures / total_disclosures * 100) if total_disclosures > 0 else 0
+            
+            result.append({
+                'id': category.id,
+                'name': category.name,
+                'code': category.code,
+                'description': category.description,
+                'order': category.order,
+                'standard_type': category.standard_type,
+                'total_disclosures': total_disclosures,
+                'answered_disclosures': answered_disclosures,
+                'completion_percentage': round(percentage, 1)
+            })
+        
+        return result
+    
+    return await sync_to_async(calculate_categories)()
+
+
 # ========== ESRS ENDPOINTS ==========
 
 @api.get("/esrs/dashboard-statistics", auth=JWTAuth())
@@ -652,7 +776,8 @@ async def get_esrs_standard_detail(request, standard_id: int):
                 'name': standard.category.name,
                 'code': standard.category.code,
                 'description': standard.category.description,
-                'order': standard.category.order
+                'order': standard.category.order,
+                'standard_type': standard.category.standard_type
             },
             'disclosures': disclosure_tree
         }
@@ -1934,13 +2059,37 @@ async def get_all_users(request):
             version_count=Count('item_versions'),
             ai_refinement_count=Count('item_versions', filter=Q(item_versions__change_type='AI_REFINEMENT'))
         ).values(
-            'id', 'email', 'username', 'company_type', 
+            'id', 'email', 'username', 'company_type', 'allowed_standards',
             'wizard_completed', 'date_joined', 'is_active',
             'document_count', 'ai_answer_count', 'version_count', 'ai_refinement_count'
         ).order_by('-date_joined')
     ))()
     
     return users
+
+
+@api.put("/admin/users/{user_id}/allowed-standards", response=MessageSchema, auth=JWTAuth())
+async def update_user_allowed_standards(request, user_id: int, allowed_standards: list[str]):
+    """Update user's allowed standards - admin only"""
+    from accounts.models import User
+    
+    # Check admin
+    if not request.auth.is_staff and not request.auth.is_superuser:
+        return JsonResponse({"message": "Admin access required"}, status=403)
+    
+    def update_standards():
+        try:
+            user = User.objects.get(id=user_id)
+            user.allowed_standards = allowed_standards
+            user.save()
+            return {
+                "message": f"Updated allowed standards for {user.email}",
+                "success": True
+            }
+        except User.DoesNotExist:
+            return {"message": "User not found", "success": False}
+    
+    return await sync_to_async(update_standards)()
 
 
 @api.post("/admin/prompts/{standard_id}", response=MessageSchema, auth=JWTAuth())

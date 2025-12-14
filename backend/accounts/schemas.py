@@ -13,6 +13,7 @@ class UserSchema(Schema):
     wizard_completed: bool = False
     company_type: Optional[str] = None
     website_url: Optional[str] = None
+    allowed_standards: list[str] = []
 
 class LoginSchema(Schema):
     email: str
@@ -58,6 +59,7 @@ class ESRSCategorySchema(Schema):
     code: str
     description: str
     order: int
+    standard_type: str
 
 
 class ESRSDisclosureSchema(Schema):
@@ -253,3 +255,29 @@ class RefineTableSchema(Schema):
 
 class SelectVersionSchema(Schema):
     version_id: str
+
+
+# ========== DYNAMIC STANDARDS SCHEMAS ==========
+
+class StandardTypeSchema(Schema):
+    """Schema for standard type metadata"""
+    type: str  # ESRS, ISO9001, etc.
+    name: str  # Full name
+    description: str
+    icon: str  # Emoji or icon class
+    total_requirements: int
+    answered_requirements: int
+    completion_percentage: float
+
+
+class CategoryWithProgressSchema(Schema):
+    """Category schema with user progress"""
+    id: int
+    name: str
+    code: str
+    description: str
+    order: int
+    standard_type: str
+    total_disclosures: int
+    answered_disclosures: int
+    completion_percentage: float

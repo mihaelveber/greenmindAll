@@ -2,7 +2,7 @@ from ninja import NinjaAPI
 from ninja.errors import ValidationError
 from django.http import JsonResponse
 from django.db import models
-from accounts.auth import JWTAuth, create_access_token, create_refresh_token
+from accounts.auth import JWTAuth, AdminAuth, create_access_token, create_refresh_token
 from accounts.schemas import (
     LoginSchema, RegisterSchema, TokenSchema, 
     UserSchema, MessageSchema, CompanyTypeSchema, DocumentSchema,
@@ -11,12 +11,14 @@ from accounts.schemas import (
     ESRSUserResponseSchema, DocumentEvidenceSchema,
     AITaskStatusSchema, StartAITaskResponse, UpdateNotesSchema, GenerateImageSchema,
     StartConversationSchema, SendMessageSchema, SelectVersionSchema, ToggleChartSelectionSchema,
-    StandardTypeSchema, CategoryWithProgressSchema
+    StandardTypeSchema, CategoryWithProgressSchema, UpdateChartSchema, UpdateTableSchema,
+    ChartSelectionResponseSchema, WebsiteUrlSchema, AssignDisclosureSchema
 )
 from django.contrib.auth import get_user_model, authenticate
 from django.contrib.auth.hashers import make_password
 from asgiref.sync import sync_to_async
 from accounts.tasks import send_welcome_email
+from accounts.team_models import ActivityLog
 from datetime import datetime
 from typing import Optional
 import logging
@@ -24,6 +26,40 @@ import logging
 logger = logging.getLogger(__name__)
 
 User = get_user_model()
+
+
+# ===== TEAM COLLABORATION HELPER FUNCTIONS =====
+
+def get_organization_owner(user):
+    """Get the organization owner for a user"""
+    from accounts.team_models import UserRole
+    
+    if user.is_organization_owner:
+        return user
+    
+    try:
+        role = UserRole.objects.get(user=user)
+        return role.organization
+    except UserRole.DoesNotExist:
+        return user  # Fallback to user itself
+
+
+def log_activity_sync(user, action, disclosure=None, details=None):
+    """Synchronous activity logging"""
+    organization = get_organization_owner(user)
+    ActivityLog.objects.create(
+        user=user,
+        organization=organization,
+        action=action,
+        disclosure=disclosure,
+        details=details or {}
+    )
+
+
+async def log_activity(user, action, disclosure=None, details=None):
+    """Async activity logging"""
+    await sync_to_async(log_activity_sync)(user, action, disclosure, details)
+
 
 api = NinjaAPI(
     title="Greenmind AI API",
@@ -34,6 +70,18 @@ api = NinjaAPI(
 # Import conversation API router
 from .conversation_api import router as conversation_router
 api.add_router("", conversation_router)
+
+# Import team management API router
+from .team_api import router as team_router
+api.add_router("", team_router)
+
+# Import admin API router
+from .admin_api import router as admin_router
+api.add_router("/admin", admin_router, tags=["Admin"])
+
+# Import model selection API router
+from .model_selection_api import router as model_selection_router
+api.add_router("/ai", model_selection_router)
 
 @api.post("/auth/register", response=TokenSchema)
 async def register(request, data: RegisterSchema):
@@ -147,13 +195,44 @@ async def get_current_user(request):
         "date_joined": request.auth.date_joined,
         "wizard_completed": request.auth.wizard_completed,
         "company_type": request.auth.company_type,
-        "website_url": request.auth.website_url
+        "website_url": request.auth.website_url,
+        "is_staff": request.auth.is_staff,
+        "is_organization_owner": request.auth.is_organization_owner
     }
 
 @api.post("/auth/logout", response=MessageSchema, auth=JWTAuth())
 async def logout(request):
     """Odjava uporabnika"""
     return {"message": "Uspešna odjava", "success": True}
+
+@api.get("/auth/rag-settings", response=dict, auth=JWTAuth())
+async def get_rag_settings(request):
+    """Get user's RAG TIER configuration"""
+    user = request.auth
+    return {
+        "rag_tier1_enabled": user.rag_tier1_enabled,
+        "rag_tier2_threshold": user.rag_tier2_threshold,
+        "rag_tier3_enabled": user.rag_tier3_enabled,
+        "rag_tier3_threshold": user.rag_tier3_threshold
+    }
+
+@api.post("/auth/update-rag-settings", response=MessageSchema, auth=JWTAuth())
+async def update_rag_settings(request, data: dict):
+    """Update user's RAG TIER configuration"""
+    user = request.auth
+    
+    if 'rag_tier1_enabled' in data:
+        user.rag_tier1_enabled = data['rag_tier1_enabled']
+    if 'rag_tier2_threshold' in data:
+        user.rag_tier2_threshold = data['rag_tier2_threshold']
+    if 'rag_tier3_enabled' in data:
+        user.rag_tier3_enabled = data['rag_tier3_enabled']
+    if 'rag_tier3_threshold' in data:
+        user.rag_tier3_threshold = data['rag_tier3_threshold']
+    
+    await sync_to_async(user.save)()
+    
+    return {"message": "RAG settings updated successfully", "success": True}
 
 @api.get("/auth/google/login")
 def google_login(request):
@@ -232,12 +311,12 @@ async def update_website(request, data: dict):
     return {"message": "Website updated and re-scraping started", "success": True, "task_id": task.id}
 
 @api.post("/documents/add-website", response=MessageSchema, auth=JWTAuth())
-async def add_website(request, data: dict):
+async def add_website(request, data: WebsiteUrlSchema):
     """Add additional website as global document"""
     from accounts.website_scraper_task import scrape_company_website_task
     
     user = request.auth
-    website_url = data.get('website_url')
+    website_url = data.website_url.strip()  # Clean URL
     
     if not website_url:
         return {"message": "Website URL is required", "success": False}
@@ -245,7 +324,7 @@ async def add_website(request, data: dict):
     # Trigger async scraping task (will create new website document)
     task = await sync_to_async(scrape_company_website_task.delay)(user.id, website_url)
     
-    return {"message": "Website scraping started", "success": True, "task_id": task.id}
+    return {"message": f"Website crawling started for {website_url}. This may take a few minutes...", "success": True, "task_id": task.id}
 
 @api.post("/profile/complete-wizard", response=MessageSchema, auth=JWTAuth())
 async def complete_wizard(request):
@@ -324,6 +403,15 @@ async def upload_document(request):
         company_type = request.POST.get('company_type', '')
         is_wizard_upload = bool(company_type)
         
+        # Allow manual is_global setting from Documents page
+        is_global_param = request.POST.get('is_global', '')
+        if is_global_param:
+            # Frontend explicitly set is_global
+            is_global = is_global_param.lower() == 'true'
+        else:
+            # Default to wizard upload behavior
+            is_global = is_wizard_upload
+        
         # Ustvari Document zapis (samo v Django bazi, brez OpenAI)
         document = await sync_to_async(Document.objects.create)(
             user=user,
@@ -331,10 +419,10 @@ async def upload_document(request):
             file_path=saved_path,
             file_size=file.size,
             file_type=file.content_type,
-            is_global=is_wizard_upload  # ✅ Wizard uploads are GLOBAL by default
+            is_global=is_global
         )
         
-        logger.info(f'Document {document.id} saved to database: {file.name} (is_global={is_wizard_upload})')
+        logger.info(f'Document {document.id} saved to database: {file.name} (is_global={is_global})')
         
         # Start RAG processing in background (chunking + embeddings)
         from accounts.document_rag_tasks import process_document_with_rag
@@ -595,6 +683,10 @@ async def get_categories_by_type(request, standard_type: str):
     from accounts.schemas import CategoryWithProgressSchema
     from django.db.models import Q
     
+    # Permission check
+    if not request.auth.has_standard_access(standard_type):
+        return {"categories": []}
+    
     def calculate_categories():
         categories = ESRSCategory.objects.filter(
             standard_type=standard_type
@@ -647,7 +739,15 @@ async def get_dashboard_statistics(request):
     
     def calculate_stats():
         categories_stats = []
-        categories = ESRSCategory.objects.all().order_by('order')
+        
+        # Filter categories by user permissions
+        user_allowed = request.auth.allowed_standards or []
+        if user_allowed:
+            categories = ESRSCategory.objects.filter(
+                standard_type__in=user_allowed
+            ).order_by('order')
+        else:
+            categories = ESRSCategory.objects.all().order_by('order')
         
         for category in categories:
             standards = ESRSStandard.objects.filter(category=category)
@@ -690,11 +790,55 @@ async def list_esrs_categories(request):
     """Pridobi vse ESRS kategorije"""
     from accounts.models import ESRSCategory
     
-    categories = await sync_to_async(list)(
-        ESRSCategory.objects.all()
-    )
+    # Filter by user permissions
+    user_allowed = request.auth.allowed_standards or []
+    if user_allowed:
+        categories = await sync_to_async(list)(
+            ESRSCategory.objects.filter(standard_type__in=user_allowed)
+        )
+    else:
+        categories = await sync_to_async(list)(
+            ESRSCategory.objects.all()
+        )
     
     return categories
+
+
+@api.get("/esrs/disclosure-codes", response=list, auth=JWTAuth())
+async def list_disclosure_codes(request):
+    """Get all disclosure codes for assignment dropdown - formatted with names"""
+    from accounts.models import ESRSDisclosure, ESRSStandard
+    
+    # Get user's allowed standards
+    user_allowed = request.auth.allowed_standards or []
+    
+    # Build query - filter by user's allowed standards if set
+    if user_allowed:
+        disclosures = await sync_to_async(list)(
+            ESRSDisclosure.objects.select_related('standard')
+            .filter(standard__standard_type__in=user_allowed, parent__isnull=True)
+            .order_by('standard__standard_type', 'code')
+            .values('code', 'name', 'standard__standard_type', 'standard__name')
+        )
+    else:
+        disclosures = await sync_to_async(list)(
+            ESRSDisclosure.objects.select_related('standard')
+            .filter(parent__isnull=True)
+            .order_by('standard__standard_type', 'code')
+            .values('code', 'name', 'standard__standard_type', 'standard__name')
+        )
+    
+    # Format as dropdown options: "E1-1: Climate change mitigation"
+    result = []
+    for d in disclosures:
+        label = f"{d['code']}: {d['name']}"
+        result.append({
+            'value': d['code'],
+            'label': label,
+            'standard': d['standard__standard_type']
+        })
+    
+    return result
 
 
 @api.get("/esrs/standards", response=list[ESRSStandardSchema], auth=JWTAuth())
@@ -702,9 +846,18 @@ async def list_esrs_standards(request):
     """Pridobi vse ESRS standarde"""
     from accounts.models import ESRSStandard
     
-    standards = await sync_to_async(list)(
-        ESRSStandard.objects.select_related('category').all()
-    )
+    # Filter by user permissions
+    user_allowed = request.auth.allowed_standards or []
+    if user_allowed:
+        standards = await sync_to_async(list)(
+            ESRSStandard.objects.select_related('category').filter(
+                standard_type__in=user_allowed
+            )
+        )
+    else:
+        standards = await sync_to_async(list)(
+            ESRSStandard.objects.select_related('category').all()
+        )
     
     return standards
 
@@ -833,13 +986,16 @@ async def save_manual_answer(request, data: SaveManualAnswerSchema):
                 disclosure=disclosure,
                 defaults={
                     'manual_answer': data.manual_answer,
-                    'ai_temperature': 0.2
+                    'ai_temperature': 0.2,
+                    'created_by': request.auth,
+                    'modified_by': request.auth
                 }
             )
         )()
         
         if not created:
             user_response.manual_answer = data.manual_answer
+            user_response.modified_by = request.auth
             await sync_to_async(user_response.save)()
         
         # Create new ItemVersion for manual text edit
@@ -872,13 +1028,22 @@ async def save_manual_answer(request, data: SaveManualAnswerSchema):
             content={"text": data.manual_answer, "format": "html"},
             conversation=None,
             is_selected=True,  # Make this the active version
-            created_by_user=True
+            created_by_user=True,
+            created_by=request.auth
         )
         
         # Deselect old version
         if parent_version:
             parent_version.is_selected = False
             await sync_to_async(parent_version.save)()
+        
+        # Log activity
+        await log_activity(
+            user=request.auth,
+            action='manual_answer',
+            disclosure=disclosure,
+            details={'version_id': str(new_version.id), 'action': 'created' if created else 'updated'}
+        )
         
         return {"message": "Manual answer saved successfully", "success": True}
     
@@ -964,7 +1129,25 @@ async def get_notes(request, disclosure_id: int):
             ESRSUserResponse.objects.get
         )(user=request.auth, disclosure_id=disclosure_id)
         
-        return user_response
+        # Convert to dict and add assigned_to_id explicitly
+        return {
+            'id': user_response.id,
+            'disclosure_id': user_response.disclosure_id,
+            'notes': user_response.notes,
+            'manual_answer': user_response.manual_answer,
+            'is_completed': user_response.is_completed,
+            'ai_answer': user_response.ai_answer,
+            'final_answer': user_response.final_answer,
+            'ai_sources': user_response.ai_sources,
+            'numeric_data': user_response.numeric_data,
+            'chart_data': user_response.chart_data,
+            'table_data': user_response.table_data,
+            'ai_temperature': user_response.ai_temperature,
+            'confidence_score': user_response.confidence_score,
+            'assigned_to': user_response.assigned_to_id,  # Return ID, not object
+            'created_at': user_response.created_at,
+            'updated_at': user_response.updated_at
+        }
     
     except ESRSUserResponse.DoesNotExist:
         # Return empty response if not exists
@@ -977,8 +1160,14 @@ async def get_notes(request, disclosure_id: int):
             'manual_answer': None,
             'is_completed': False,
             'ai_answer': None,
+            'final_answer': None,
+            'ai_sources': None,
+            'numeric_data': None,
+            'chart_data': None,
+            'table_data': None,
             'ai_temperature': 0.2,
             'confidence_score': None,
+            'assigned_to': None,
             'created_at': now,
             'updated_at': now
         }
@@ -1049,6 +1238,60 @@ async def toggle_completion(request, disclosure_id: int):
     
     except ESRSDisclosure.DoesNotExist:
         return JsonResponse({"message": "Disclosure not found"}, status=404)
+
+
+@api.post("/esrs/assign-disclosure", response=MessageSchema, auth=JWTAuth())
+async def assign_disclosure(request, data: AssignDisclosureSchema):
+    """Assign disclosure to a team member"""
+    from accounts.models import ESRSUserResponse, ESRSDisclosure
+    from accounts.team_models import UserRole
+    
+    try:
+        disclosure = await sync_to_async(ESRSDisclosure.objects.get)(id=data.disclosure_id)
+        
+        # Get organization owner
+        organization = get_organization_owner(request.auth)
+        
+        # If assigned_to_id is None, unassign
+        assigned_to_user = None
+        if data.assigned_to_id:
+            # Verify assigned user is in the same organization
+            assigned_to_user = await sync_to_async(User.objects.get)(id=data.assigned_to_id)
+            assigned_org = get_organization_owner(assigned_to_user)
+            if assigned_org.id != organization.id:
+                return JsonResponse({"message": "Cannot assign to user from different organization"}, status=403)
+        
+        # Get or create user response for the organization owner
+        user_response, created = await sync_to_async(
+            lambda: ESRSUserResponse.objects.get_or_create(
+                user=organization,  # Always use organization owner
+                disclosure=disclosure,
+                defaults={
+                    'assigned_to': assigned_to_user,
+                    'ai_temperature': 0.2
+                }
+            )
+        )()
+        
+        if not created:
+            user_response.assigned_to = assigned_to_user
+            await sync_to_async(user_response.save)()
+        
+        # Log activity
+        await sync_to_async(log_activity_sync)(
+            user=request.auth,
+            action='assigned_disclosure' if assigned_to_user else 'unassigned_disclosure',
+            disclosure=disclosure,
+            details={'assigned_to': assigned_to_user.email if assigned_to_user else None}
+        )
+        
+        message_text = f"Disclosure assigned to {assigned_to_user.email}" if assigned_to_user else "Disclosure unassigned"
+        return {"message": message_text, "success": True}
+    
+    except ESRSDisclosure.DoesNotExist:
+        return JsonResponse({"message": "Disclosure not found"}, status=404)
+    except User.DoesNotExist:
+        return JsonResponse({"message": "Assigned user not found"}, status=404)
 
 
 # ========== DOCUMENT EVIDENCE ENDPOINTS ==========
@@ -1231,12 +1474,13 @@ async def get_ai_answer(request, data: GetAIAnswerSchema):
         # Verify disclosure exists
         disclosure = await sync_to_async(ESRSDisclosure.objects.select_related('standard').get)(id=data.disclosure_id)
         
-        # Start Celery task
-        task = generate_ai_answer_task.delay(data.disclosure_id, request.auth.id, data.ai_temperature)
+        # Generate task ID first
+        from celery import uuid as celery_uuid
+        task_id = celery_uuid()
         
-        # Create task status record
+        # Create task status record BEFORE starting task (to avoid race condition)
         task_status = await sync_to_async(AITaskStatus.objects.create)(
-            task_id=task.id,
+            task_id=task_id,
             user=request.auth,
             disclosure=disclosure,
             task_type='single',
@@ -1246,9 +1490,15 @@ async def get_ai_answer(request, data: GetAIAnswerSchema):
             completed_items=0
         )
         
+        # Start Celery task with selected model (using pre-generated task_id)
+        task = generate_ai_answer_task.apply_async(
+            args=(data.disclosure_id, request.auth.id, data.ai_temperature, data.model_id),
+            task_id=task_id
+        )
+        
         return StartAITaskResponse(
             task_id=task.id,
-            message=f"AI answer generation started for {disclosure.code}"
+            message=f"AI answer generation started for {disclosure.code} using {data.model_id}"
         )
         
     except ESRSDisclosure.DoesNotExist:
@@ -1366,18 +1616,28 @@ async def generate_image(request, disclosure_id: int, data: GenerateImageSchema)
 
 
 @api.post("/esrs/update-chart", response=MessageSchema, auth=JWTAuth())
-async def update_chart(request, data: dict):
+async def update_chart(request, payload: UpdateChartSchema):
     """Update a specific chart in disclosure and create new version"""
     from accounts.models import ESRSUserResponse, ItemVersion
     import logging
+    import json
     logger = logging.getLogger(__name__)
     
+    logger.info(f"🔍 Received chart update request")
+    logger.info(f"📊 Full request data: {payload.dict()}")
+    
     try:
-        disclosure_id = data.get('disclosure_id')
-        chart_id = data.get('chart_id')
-        chart_data = data.get('chart_data')
+        disclosure_id = payload.disclosure_id
+        chart_id = payload.chart_id
+        chart_data = payload.chart_data
+        
+        logger.info(f"✅ disclosure_id: {disclosure_id}")
+        logger.info(f"✅ chart_id: {chart_id}")
+        logger.info(f"📈 chart_data type: {type(chart_data)}")
+        logger.info(f"📈 chart_data: {json.dumps(chart_data, indent=2) if chart_data else None}")
         
         if not all([disclosure_id, chart_id, chart_data]):
+            logger.error(f"❌ Missing fields: disclosure_id={disclosure_id}, chart_id={chart_id}, chart_data={bool(chart_data)}")
             return JsonResponse({"message": "Missing required fields", "success": False}, status=400)
         
         # Get user response
@@ -1456,16 +1716,16 @@ async def update_chart(request, data: dict):
 
 
 @api.post("/esrs/update-table", response=MessageSchema, auth=JWTAuth())
-async def update_table(request, data: dict):
+async def update_table(request, payload: UpdateTableSchema):
     """Update a specific table in disclosure and create new version"""
     from accounts.models import ESRSUserResponse, ItemVersion
     import logging
     logger = logging.getLogger(__name__)
     
     try:
-        disclosure_id = data.get('disclosure_id')
-        table_id = data.get('table_id')
-        table_data = data.get('table_data')
+        disclosure_id = payload.disclosure_id
+        table_id = payload.table_id
+        table_data = payload.table_data
         
         if not all([disclosure_id, table_id is not None, table_data]):
             return JsonResponse({"message": "Missing required fields", "success": False}, status=400)
@@ -1755,6 +2015,8 @@ User wants to refine this content. Follow their instructions while maintaining a
 async def get_versions(request, item_type: str, item_id: int):
     """Get all versions for an item"""
     from accounts.models import ItemVersion
+    import logging
+    logger = logging.getLogger(__name__)
     
     try:
         versions = await sync_to_async(list)(
@@ -1762,27 +2024,45 @@ async def get_versions(request, item_type: str, item_id: int):
                 item_type=item_type,
                 item_id=item_id,
                 user=request.auth
-            ).order_by('-version_number')
+            ).select_related('parent_version').order_by('-version_number')
         )
         
-        return {
-            "versions": [
-                {
-                    "id": str(v.id),
-                    "version_number": v.version_number,
-                    "change_type": v.change_type,
-                    "change_description": v.change_description,
-                    "content": v.content,
-                    "is_selected": v.is_selected,
-                    "created_at": v.created_at.isoformat(),
-                    "created_by_user": v.created_by_user,
-                    "parent_version_id": str(v.parent_version.id) if v.parent_version else None,
-                    "conversation_id": str(v.conversation.id) if v.conversation else None
-                }
-                for v in versions
-            ]
-        }
+        # Build version data without triggering lazy loads
+        version_data = []
+        for v in versions:
+            # Access parent_version_id directly to avoid lazy loading
+            parent_id = v.parent_version_id
+            
+            # Get created_by email if available
+            created_by_email = None
+            if v.created_by_id:
+                from django.contrib.auth import get_user_model
+                User = get_user_model()
+                try:
+                    creator = await sync_to_async(User.objects.get)(id=v.created_by_id)
+                    created_by_email = creator.email
+                except:
+                    pass
+            
+            version_data.append({
+                "id": str(v.id),
+                "version_number": v.version_number,
+                "change_type": v.change_type,
+                "change_description": v.change_description,
+                "content": v.content,
+                "is_selected": v.is_selected,
+                "created_at": v.created_at.isoformat(),
+                "created_by_user": v.created_by_user,
+                "created_by_email": created_by_email,
+                "parent_version_id": str(parent_id) if parent_id else None,
+                "conversation_id": None  # conversation field nullable
+            })
+        
+        return {"versions": version_data}
     except Exception as e:
+        logger.error(f"Error getting versions for {item_type}/{item_id}: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
         return JsonResponse({"message": f"Error: {str(e)}"}, status=500)
 
 
@@ -1937,6 +2217,13 @@ async def get_task_status(request, task_id: str):
             'error_message': task_status.error_message,
             'disclosure_code': task_status.disclosure.code if task_status.disclosure else None,
             'standard_code': task_status.standard.code if task_status.standard else None,
+            'current_step': task_status.current_step,
+            'steps_completed': task_status.steps_completed,
+            'processing_steps': task_status.processing_steps,  # TIER RAG steps for UI
+            'documents_used': task_status.documents_used,
+            'chunks_used': task_status.chunks_used,
+            'confidence_score': task_status.confidence_score,
+            'reasoning_summary': task_status.reasoning_summary,  # AI reasoning from o1/Claude
             'created_at': task_status.created_at,
             'updated_at': task_status.updated_at
         }
@@ -1960,7 +2247,7 @@ async def get_active_tasks(request):
             AITaskStatus.objects.filter(
                 user=request.auth,
                 status__in=['pending', 'running']
-            ).select_related('disclosure', 'standard').order_by('-created_at')
+            ).select_related('disclosure', 'standard', 'document').order_by('-created_at')
         )
         
         # Prepare response
@@ -1978,6 +2265,7 @@ async def get_active_tasks(request):
                 error_message=task.error_message,
                 disclosure_code=task.disclosure.code if task.disclosure else None,
                 standard_code=task.standard.code if task.standard else None,
+                document_name=task.document.file_name if task.document else None,
                 created_at=task.created_at,
                 updated_at=task.updated_at
             ))
@@ -1990,16 +2278,13 @@ async def get_active_tasks(request):
 
 # ========== ADMIN ENDPOINTS ==========
 
-@api.get("/admin/statistics", auth=JWTAuth())
+@api.get("/admin/statistics", auth=AdminAuth())
 async def get_admin_statistics(request):
     """Get system statistics - admin only"""
     from accounts.models import User, Document, ESRSUserResponse, ItemVersion, AIConversation
     from django.db.models import Count, Q, Sum
     from datetime import datetime, timedelta
     
-    # Check admin
-    if not request.auth.is_staff and not request.auth.is_superuser:
-        return JsonResponse({"message": "Admin access required"}, status=403)
     
     total_users = await sync_to_async(User.objects.count)()
     total_companies = await sync_to_async(
@@ -2042,15 +2327,11 @@ async def get_admin_statistics(request):
     }
 
 
-@api.get("/admin/users", auth=JWTAuth())
+@api.get("/admin/users", auth=AdminAuth())
 async def get_all_users(request):
     """Get all users with statistics - admin only"""
     from accounts.models import User, Document, ESRSUserResponse, ItemVersion
     from django.db.models import Count, Q
-    
-    # Check admin
-    if not request.auth.is_staff and not request.auth.is_superuser:
-        return JsonResponse({"message": "Admin access required"}, status=403)
     
     users = await sync_to_async(lambda: list(
         User.objects.annotate(
@@ -2068,14 +2349,11 @@ async def get_all_users(request):
     return users
 
 
-@api.put("/admin/users/{user_id}/allowed-standards", response=MessageSchema, auth=JWTAuth())
+@api.put("/admin/users/{user_id}/allowed-standards", response=MessageSchema, auth=AdminAuth())
 async def update_user_allowed_standards(request, user_id: int, allowed_standards: list[str]):
     """Update user's allowed standards - admin only"""
     from accounts.models import User
     
-    # Check admin
-    if not request.auth.is_staff and not request.auth.is_superuser:
-        return JsonResponse({"message": "Admin access required"}, status=403)
     
     def update_standards():
         try:
@@ -2092,14 +2370,11 @@ async def update_user_allowed_standards(request, user_id: int, allowed_standards
     return await sync_to_async(update_standards)()
 
 
-@api.post("/admin/prompts/{standard_id}", response=MessageSchema, auth=JWTAuth())
+@api.post("/admin/prompts/{standard_id}", response=MessageSchema, auth=AdminAuth())
 async def update_ai_prompt(request, standard_id: int, data: dict):
     """Update AI prompt template for ESRS standard - admin only"""
     from accounts.models import ESRSStandard
     
-    # Check admin
-    if not request.auth.is_staff and not request.auth.is_superuser:
-        return JsonResponse({"message": "Admin access required"}, status=403)
     
     try:
         standard = await sync_to_async(ESRSStandard.objects.get)(id=standard_id)
@@ -2112,14 +2387,11 @@ async def update_ai_prompt(request, standard_id: int, data: dict):
         return JsonResponse({"message": "Standard not found"}, status=404)
 
 
-@api.get("/admin/disclosure/{disclosure_id}/prompt", auth=JWTAuth())
+@api.get("/admin/disclosure/{disclosure_id}/prompt", auth=AdminAuth())
 async def get_disclosure_prompt(request, disclosure_id: int):
     """Get AI prompt for specific disclosure - admin only"""
     from accounts.models import ESRSDisclosure
     
-    # Check admin
-    if not request.auth.is_staff and not request.auth.is_superuser:
-        return JsonResponse({"message": "Admin access required"}, status=403)
     
     try:
         disclosure = await sync_to_async(
@@ -2139,14 +2411,11 @@ async def get_disclosure_prompt(request, disclosure_id: int):
         return JsonResponse({"message": "Disclosure not found"}, status=404)
 
 
-@api.put("/admin/disclosure/{disclosure_id}/prompt", response=MessageSchema, auth=JWTAuth())
+@api.put("/admin/disclosure/{disclosure_id}/prompt", response=MessageSchema, auth=AdminAuth())
 async def update_disclosure_prompt(request, disclosure_id: int, data: dict):
     """Update AI prompt for specific disclosure - admin only"""
     from accounts.models import ESRSDisclosure
     
-    # Check admin
-    if not request.auth.is_staff and not request.auth.is_superuser:
-        return JsonResponse({"message": "Admin access required"}, status=403)
     
     try:
         disclosure = await sync_to_async(ESRSDisclosure.objects.get)(id=disclosure_id)
@@ -2167,12 +2436,9 @@ async def update_disclosure_prompt(request, disclosure_id: int, data: dict):
         return JsonResponse({"message": "Disclosure not found"}, status=404)
 
 
-@api.post("/admin/settings", response=MessageSchema, auth=JWTAuth())
+@api.post("/admin/settings", response=MessageSchema, auth=AdminAuth())
 async def update_system_settings(request, data: dict):
     """Update system settings - admin only"""
-    # Check admin
-    if not request.auth.is_staff and not request.auth.is_superuser:
-        return JsonResponse({"message": "Admin access required"}, status=403)
     
     # Store settings in database or config file
     # For now, just return success
@@ -2181,14 +2447,12 @@ async def update_system_settings(request, data: dict):
 
 # ========== RAG ADMIN ENDPOINTS ==========
 
-@api.get("/admin/rag/overview", auth=JWTAuth())
+@api.get("/admin/rag/overview", auth=AdminAuth())
 async def get_rag_overview(request):
     """Get RAG system overview with key metrics - admin only"""
     from accounts.vector_models import DocumentChunk, SearchQuery, EmbeddingModel, RerankerModel
     from django.db.models import Avg, Count, F, FloatField, ExpressionWrapper
     
-    if not request.auth.is_staff and not request.auth.is_superuser:
-        return JsonResponse({"message": "Admin access required"}, status=403)
     
     try:
         # Total documents and chunks
@@ -2282,13 +2546,11 @@ async def get_rag_overview(request):
         return JsonResponse({"message": str(e)}, status=500)
 
 
-@api.get("/admin/rag/embedding-models", auth=JWTAuth())
+@api.get("/admin/rag/embedding-models", auth=AdminAuth())
 async def get_embedding_models_list(request):
     """Get all embedding models with stats - admin only"""
     from accounts.vector_models import EmbeddingModel
     
-    if not request.auth.is_staff and not request.auth.is_superuser:
-        return JsonResponse({"message": "Admin access required"}, status=403)
     
     try:
         models = await sync_to_async(
@@ -2307,13 +2569,11 @@ async def get_embedding_models_list(request):
         return JsonResponse({"message": str(e)}, status=500)
 
 
-@api.post("/admin/rag/embedding-models/{model_id}/toggle", auth=JWTAuth())
+@api.post("/admin/rag/embedding-models/{model_id}/toggle", auth=AdminAuth())
 async def toggle_embedding_model_active(request, model_id: int):
     """Toggle embedding model active status - admin only"""
     from accounts.vector_models import EmbeddingModel
     
-    if not request.auth.is_staff and not request.auth.is_superuser:
-        return JsonResponse({"message": "Admin access required"}, status=403)
     
     try:
         model = await sync_to_async(EmbeddingModel.objects.get)(id=model_id)
@@ -2329,13 +2589,11 @@ async def toggle_embedding_model_active(request, model_id: int):
         return JsonResponse({"message": str(e)}, status=500)
 
 
-@api.post("/admin/rag/embedding-models/{model_id}/set-default", auth=JWTAuth())
+@api.post("/admin/rag/embedding-models/{model_id}/set-default", auth=AdminAuth())
 async def set_default_embedding_model_api(request, model_id: int):
     """Set embedding model as default - admin only"""
     from accounts.vector_models import EmbeddingModel
     
-    if not request.auth.is_staff and not request.auth.is_superuser:
-        return JsonResponse({"message": "Admin access required"}, status=403)
     
     try:
         # Remove default from all models
@@ -2358,14 +2616,12 @@ async def set_default_embedding_model_api(request, model_id: int):
 
 # ========== USER ESRS PROGRESS ENDPOINTS ==========
 
-@api.get("/admin/users/{user_id}/esrs-progress", auth=JWTAuth())
+@api.get("/admin/users/{user_id}/esrs-progress", auth=AdminAuth())
 async def get_user_esrs_progress_admin(request, user_id: int):
     """Get detailed ESRS progress for specific user - admin only"""
     from accounts.models import ESRSStandard, ESRSDisclosure, ESRSUserResponse
     from django.db.models import Count, Q
     
-    if not request.auth.is_staff and not request.auth.is_superuser:
-        return JsonResponse({"message": "Admin access required"}, status=403)
     
     try:
         # Get user
@@ -2479,14 +2735,12 @@ async def get_user_esrs_progress_admin(request, user_id: int):
         return JsonResponse({"message": str(e)}, status=500)
 
 
-@api.get("/admin/users/{user_id}/documents", auth=JWTAuth())
+@api.get("/admin/users/{user_id}/documents", auth=AdminAuth())
 async def get_user_documents_admin(request, user_id: int):
     """Get all documents for user with RAG stats - admin only"""
     from accounts.vector_models import DocumentChunk
     from django.db.models import Count
     
-    if not request.auth.is_staff and not request.auth.is_superuser:
-        return JsonResponse({"message": "Admin access required"}, status=403)
     
     try:
         user = await sync_to_async(User.objects.get)(id=user_id)
@@ -2526,7 +2780,7 @@ async def get_user_documents_admin(request, user_id: int):
 
 # ========== ADMIN ANALYTICS & STATISTICS ==========
 
-@api.get("/admin/users/{user_id}/ai-usage", auth=JWTAuth())
+@api.get("/admin/users/{user_id}/ai-usage", auth=AdminAuth())
 async def get_user_ai_usage(request, user_id: int):
     """Get detailed AI usage statistics for user"""
     from accounts.models import ItemVersion, AIConversation
@@ -2534,8 +2788,6 @@ async def get_user_ai_usage(request, user_id: int):
     import logging
     logger = logging.getLogger(__name__)
     
-    if not request.auth.is_staff and not request.auth.is_superuser:
-        return JsonResponse({"message": "Admin access required"}, status=403)
     
     try:
         user = await sync_to_async(User.objects.get)(id=user_id)
@@ -2591,7 +2843,7 @@ async def get_user_ai_usage(request, user_id: int):
         return JsonResponse({"message": str(e)}, status=500)
 
 
-@api.get("/admin/users/{user_id}/version-stats", auth=JWTAuth())
+@api.get("/admin/users/{user_id}/version-stats", auth=AdminAuth())
 async def get_user_version_stats(request, user_id: int):
     """Get version history statistics for user"""
     from accounts.models import ItemVersion
@@ -2599,8 +2851,6 @@ async def get_user_version_stats(request, user_id: int):
     import logging
     logger = logging.getLogger(__name__)
     
-    if not request.auth.is_staff and not request.auth.is_superuser:
-        return JsonResponse({"message": "Admin access required"}, status=403)
     
     try:
         user = await sync_to_async(User.objects.get)(id=user_id)
@@ -2662,7 +2912,7 @@ async def get_user_version_stats(request, user_id: int):
         return JsonResponse({"message": str(e)}, status=500)
 
 
-@api.get("/admin/users/{user_id}/activity-timeline", auth=JWTAuth())
+@api.get("/admin/users/{user_id}/activity-timeline", auth=AdminAuth())
 async def get_user_activity_timeline(request, user_id: int, days: int = 30):
     """Get user activity timeline (versions, responses, documents)"""
     from accounts.models import ItemVersion, ESRSUserResponse, Document
@@ -2670,8 +2920,6 @@ async def get_user_activity_timeline(request, user_id: int, days: int = 30):
     import logging
     logger = logging.getLogger(__name__)
     
-    if not request.auth.is_staff and not request.auth.is_superuser:
-        return JsonResponse({"message": "Admin access required"}, status=403)
     
     try:
         user = await sync_to_async(User.objects.get)(id=user_id)
@@ -2772,7 +3020,7 @@ async def get_user_activity_timeline(request, user_id: int, days: int = 30):
 
 # ========== CHART MANAGEMENT ENDPOINTS ==========
 
-@api.post("/esrs/toggle-chart-selection", response=MessageSchema, auth=JWTAuth())
+@api.post("/esrs/toggle-chart-selection", response=ChartSelectionResponseSchema, auth=JWTAuth())
 async def toggle_chart_selection(request, data: ToggleChartSelectionSchema):
     """Toggle chart selection for report"""
     from accounts.models import ESRSUserResponse

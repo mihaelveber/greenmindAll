@@ -92,6 +92,10 @@ class ItemVersion(models.Model):
     conversation = models.ForeignKey(AIConversation, on_delete=models.SET_NULL, null=True, blank=True,
                                     related_name='versions')
     
+    # === USER TRACKING FOR MULTI-USER COLLABORATION ===
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+                                  related_name='created_versions', help_text='User who created this version')
+    
     is_selected = models.BooleanField(default=False, help_text="Currently active version")
     created_at = models.DateTimeField(auto_now_add=True)
     created_by_user = models.BooleanField(default=False, help_text="True if manually edited, False if AI generated")

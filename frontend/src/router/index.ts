@@ -49,17 +49,23 @@ const router = createRouter({
       redirect: '/standards/ESRS'
     },
     {
-      path: '/admin',
-      name: 'admin',
-      component: () => import('../views/AdminView.vue'),
-      meta: { requiresAuth: true, requiresAdmin: true }
-    },
-    {
-      path: '/admin-dashboard',
-      name: 'admin-dashboard',
-      component: () => import('../views/AdminDashboard.vue'),
-      meta: { requiresAuth: true, requiresAdmin: true }
-    }
+      path: '/team',
+      name: 'team',
+      component: () => import('../views/UserManagementView.vue'),
+      meta: { requiresAuth: true }
+    },    // Admin panel routes removed - admin panel is now separate app on port 5174
+    // {
+    //   path: '/admin',
+    //   name: 'admin',
+    //   component: () => import('../views/AdminTokenDashboard.vue'),
+    //   meta: { requiresAuth: true, requiresAdmin: true }
+    // },
+    // {
+    //   path: '/admin-dashboard',
+    //   name: 'admin-dashboard',
+    //   component: () => import('../views/AdminDashboard.vue'),
+    //   meta: { requiresAuth: true, requiresAdmin: true }
+    // }
   ]
 })
 
@@ -68,6 +74,9 @@ router.beforeEach(async (to, from, next) => {
   
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
     next('/login')
+  } else if (to.meta.requiresAdmin && !authStore.user?.is_superuser) {
+    // Redirect non-admin users trying to access admin pages
+    next('/dashboard')
   } else if (to.meta.requiresGuest && authStore.isAuthenticated) {
     // Check if wizard is completed
     if (authStore.user && !authStore.user.wizard_completed && to.name !== 'wizard') {

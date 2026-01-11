@@ -66,6 +66,16 @@
                   📋
                 </n-button>
                 <n-button
+                  v-if="getMessageSources(message)?.length > 0"
+                  size="tiny"
+                  secondary
+                  type="info"
+                  @click="openSourcesModal(message)"
+                  title="View source documents and references"
+                >
+                  📚 References ({{ getMessageSources(message).length }})
+                </n-button>
+                <n-button
                   size="tiny"
                   text
                   @click="openRegenerateModal(message.id, index)"
@@ -98,11 +108,14 @@
           </div>
         </div>
 
-        <!-- Typing indicator -->
-        <div v-if="isGenerating" class="typing-indicator">
-          <n-spin size="small" />
-          <span style="margin-left: 8px;">AI is thinking...</span>
-        </div>
+        <!-- Thinking indicator / AI Progress -->
+        <AIThinkingProgress
+          v-if="isGenerating"
+          :show="isGenerating"
+          :title="'🤖 AI is thinking...'"
+          :steps="thinkingSteps"
+          :current-step="currentThinkingStep"
+        />
       </div>
 
       <!-- Input Area -->
@@ -219,6 +232,13 @@
         </n-space>
       </n-space>
     </n-modal>
+
+    <!-- Sources Modal -->
+    <SourcesModal
+      v-model:show="showSourcesModal"
+      :sources="currentSources"
+      :disclosure-code="disclosureCode"
+    />
   </div>
 </template>
 
@@ -227,6 +247,8 @@ import { ref, onMounted, nextTick, watch } from 'vue'
 import { NCard, NSpace, NTag, NButton, NInput, NInputNumber, NAlert, NDivider, NSpin, NModal, NText, NEmpty, useMessage } from 'naive-ui'
 import { marked } from 'marked'
 import api from '../services/api'
+import SourcesModal from './SourcesModal.vue'
+import AIThinkingProgress from './AIThinkingProgress.vue'
 
 interface Message {
   id: number
@@ -260,6 +282,20 @@ const currentTemperature = ref(0.2)
 const isGenerating = ref(false)
 const messagesContainer = ref<HTMLElement>()
 const savingAsAnswer = ref<number | null>(null)
+
+// AI Thinking Progress
+const thinkingSteps = ref<Array<{text: string; result?: string; resultType?: 'success' | 'info' | 'warning' | 'error'}>>([
+  { text: '🔍 Multi-Query Generation', result: '', resultType: 'info' },
+  { text: '📊 Hybrid BM25+Embeddings Search', result: '', resultType: 'info' },
+  { text: '📚 Document Expansion', result: '', resultType: 'info' },
+  { text: '🔧 Context Building', result: '', resultType: 'info' },
+  { text: '🤖 AI Response Generation', result: '', resultType: 'info' }
+])
+const currentThinkingStep = ref(0)
+
+// Sources modal
+const showSourcesModal = ref(false)
+const currentSources = ref<any[]>([])
 
 // Regenerate modal
 const showRegenerateModal = ref(false)
@@ -295,12 +331,54 @@ const sendMessage = async () => {
   const userMessageText = newMessage.value.trim()
   newMessage.value = ''
   isGenerating.value = true
+  
+  // Reset thinking progress
+  currentThinkingStep.value = -1
+  thinkingSteps.value.forEach(step => {
+    step.result = ''
+    step.resultType = 'info'
+  })
+  
+  // Animate thinking steps progressively
+  const animateSteps = async (steps: any[]) => {
+    for (let i = 0; i < steps.length; i++) {
+      currentThinkingStep.value = i
+      await new Promise(resolve => setTimeout(resolve, 300)) // 300ms delay between steps
+    }
+  }
+  
+  // Start animation (will run in parallel with API call)
+  const animationPromise = animateSteps(thinkingSteps.value)
 
   try {
     const response = await api.post(`/esrs/conversation/message/${props.threadId}`, {
       message: userMessageText,
       temperature: currentTemperature.value
     })
+    
+    // Wait for animation to finish before showing results
+    await animationPromise
+    
+    // Update progress from backend TIER 1 + TIER 2 processing steps
+    if (response.data.processing_steps) {
+      const stepMapping: any = {
+        multi_query: 0,
+        hybrid_search: 1,
+        document_expansion: 2,
+        context_building: 3,
+        ai_generation: 4
+      }
+      
+      response.data.processing_steps.forEach((step: any) => {
+        const stepIndex = stepMapping[step.step]
+        if (stepIndex !== undefined && stepIndex < thinkingSteps.value.length) {
+          thinkingSteps.value[stepIndex].result = step.result || ''
+          thinkingSteps.value[stepIndex].resultType = step.status === 'completed' ? 'success' : 'info'
+        }
+      })
+    }
+    
+    currentThinkingStep.value = thinkingSteps.value.length - 1
 
     // Only add messages if API call succeeded
     if (response.data.message_id && response.data.content) {
@@ -319,7 +397,8 @@ const sendMessage = async () => {
         content: response.data.content,
         temperature: response.data.temperature,
         confidence_score: response.data.confidence_score,
-        created_at: new Date().toISOString()
+        created_at: new Date().toISOString(),
+        chart_data: response.data.ai_sources ? { ai_sources: response.data.ai_sources } : undefined
       })
 
       emit('messageAdded')
@@ -369,7 +448,8 @@ const regenerateMessage = async () => {
         content: response.data.content,
         temperature: response.data.temperature,
         confidence_score: response.data.confidence_score,
-        regenerated: true
+        regenerated: true,
+        chart_data: response.data.ai_sources ? { ai_sources: response.data.ai_sources } : undefined
       }
     }
 
@@ -444,6 +524,22 @@ const getTemperatureLabel = (temp: number): string => {
   if (temp <= 0.5) return 'Balanced'
   if (temp <= 0.7) return 'Creative'
   return 'Very Creative'
+}
+
+const getMessageSources = (message: Message): any[] => {
+  // Sources are stored in chart_data.ai_sources
+  if (message.chart_data && message.chart_data.ai_sources) {
+    return message.chart_data.ai_sources
+  }
+  return []
+}
+
+const openSourcesModal = (message: Message) => {
+  const sources = getMessageSources(message)
+  if (sources.length > 0) {
+    currentSources.value = sources
+    showSourcesModal.value = true
+  }
 }
 </script>
 

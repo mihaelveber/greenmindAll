@@ -1,7 +1,8 @@
 from ninja import Schema
 from typing import Optional
 from datetime import datetime
-
+class ErrorSchema(Schema):
+    error: str
 class UserSchema(Schema):
     id: int
     email: str
@@ -14,6 +15,8 @@ class UserSchema(Schema):
     company_type: Optional[str] = None
     website_url: Optional[str] = None
     allowed_standards: list[str] = []
+    is_staff: bool = False
+    is_organization_owner: bool = True
 
 class LoginSchema(Schema):
     email: str
@@ -38,6 +41,9 @@ class OAuthCallbackSchema(Schema):
 class MessageSchema(Schema):
     message: str
     success: bool = True
+
+class ErrorSchema(Schema):
+    error: str
 
 class CompanyTypeSchema(Schema):
     company_type: str
@@ -118,6 +124,7 @@ class LinkDocumentSchema(Schema):
 class GetAIAnswerSchema(Schema):
     disclosure_id: int
     ai_temperature: float = 0.2
+    model_id: str = 'gpt-4o'  # Default model
 
 
 class ESRSUserResponseSchema(Schema):
@@ -136,6 +143,8 @@ class ESRSUserResponseSchema(Schema):
     # AI Generation Settings
     ai_temperature: float = 0.2
     confidence_score: Optional[float] = None
+    # Team Assignment
+    assigned_to: Optional[int] = None  # User ID of assigned team member
     created_at: datetime
     updated_at: datetime
 
@@ -160,6 +169,17 @@ class AITaskStatusSchema(Schema):
     error_message: Optional[str] = None
     disclosure_code: Optional[str] = None
     standard_code: Optional[str] = None
+    document_name: Optional[str] = None
+    
+    # Detailed progress tracking
+    current_step: Optional[str] = None
+    steps_completed: Optional[list] = None
+    processing_steps: Optional[list] = None  # TIER RAG processing steps for ThinkingProcess UI
+    documents_used: Optional[int] = None
+    chunks_used: Optional[int] = None
+    confidence_score: Optional[float] = None
+    reasoning_summary: Optional[str] = None  # AI reasoning from OpenAI o1 models
+    
     created_at: datetime
     updated_at: datetime
 
@@ -239,6 +259,13 @@ class ToggleChartSelectionSchema(Schema):
     chart_id: str
 
 
+class ChartSelectionResponseSchema(Schema):
+    """Response schema for chart selection toggle"""
+    message: str
+    success: bool = True
+    selected_for_report: bool
+
+
 class RefineImageSchema(Schema):
     disclosure_id: int  
     image_id: str
@@ -255,6 +282,20 @@ class RefineTableSchema(Schema):
 
 class SelectVersionSchema(Schema):
     version_id: str
+
+
+class UpdateChartSchema(Schema):
+    """Schema for updating chart data"""
+    disclosure_id: int
+    chart_id: str
+    chart_data: dict
+
+
+class UpdateTableSchema(Schema):
+    """Schema for updating table data"""
+    disclosure_id: int
+    table_id: str
+    table_data: dict
 
 
 # ========== DYNAMIC STANDARDS SCHEMAS ==========
@@ -281,3 +322,13 @@ class CategoryWithProgressSchema(Schema):
     total_disclosures: int
     answered_disclosures: int
     completion_percentage: float
+
+
+class WebsiteUrlSchema(Schema):
+    """Schema for adding website as document"""
+    website_url: str
+
+class AssignDisclosureSchema(Schema):
+    """Schema for assigning disclosure to a team member"""
+    disclosure_id: int
+    assigned_to_id: Optional[int] = None  # None to unassign

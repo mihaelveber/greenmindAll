@@ -4,6 +4,7 @@ Generates chunks, contexts, and embeddings for uploaded documents
 """
 
 import logging
+import time
 from celery import shared_task
 from accounts.models import Document
 from accounts.vector_models import DocumentChunk as VectorDocumentChunk
@@ -11,6 +12,43 @@ from accounts.rag_engine import SemanticChunker, ContextGenerator
 from accounts.embedding_service import get_embedding_service
 
 logger = logging.getLogger(__name__)
+
+
+class AnthropicRateLimiter:
+    """
+    Token bucket rate limiter for Anthropic API
+    TIER 1: 50,000 tokens/min
+    Conservative: 40,000 tokens/min (80% of limit)
+    Average chunk: ~2000 tokens (document + chunk text)
+    Max chunks/min: 20 chunks (40,000 / 2000)
+    """
+    def __init__(self, tokens_per_minute=40000, tokens_per_chunk=2000):
+        self.tokens_per_minute = tokens_per_minute
+        self.tokens_per_chunk = tokens_per_chunk
+        self.max_chunks_per_minute = tokens_per_minute // tokens_per_chunk
+        self.last_reset = time.time()
+        self.chunks_processed = 0
+        
+    def wait_if_needed(self):
+        """Wait if we've hit rate limit"""
+        current_time = time.time()
+        elapsed = current_time - self.last_reset
+        
+        # Reset counter every minute
+        if elapsed >= 60:
+            self.chunks_processed = 0
+            self.last_reset = current_time
+            return
+        
+        # If we've hit limit, wait until minute resets
+        if self.chunks_processed >= self.max_chunks_per_minute:
+            wait_time = 60 - elapsed
+            logger.info(f'⏱️ Rate limit reached ({self.chunks_processed} chunks), waiting {wait_time:.1f}s...')
+            time.sleep(wait_time)
+            self.chunks_processed = 0
+            self.last_reset = time.time()
+        
+        self.chunks_processed += 1
 
 
 @shared_task(bind=True)
@@ -34,12 +72,14 @@ def process_document_with_rag(self, document_id: int):
             task_id=task_id,
             defaults={
                 'user': document.user,
+                'document': document,
                 'task_type': 'rag_processing',
                 'status': 'running',
                 'progress': 0
             }
         )
         if not created:
+            task_status.document = document
             task_status.status = 'running'
             task_status.progress = 0
             task_status.save()
@@ -63,28 +103,127 @@ def process_document_with_rag(self, document_id: int):
         task_status.metadata = {'stage': 'chunking', 'content_length': len(content)}
         task_status.save()
         
-        # Semantic chunking
+        # Semantic chunking with larger size for Excel/CSV (better table preservation)
         chunker = SemanticChunker()
-        chunks = chunker.chunk_by_paragraphs(content, max_chunk_size=1000, overlap=200)
-        
-        logger.info(f'Created {len(chunks)} chunks for document {document.file_name}')
+        if document.file_type in ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 
+                                   'application/vnd.ms-excel', 'text/csv']:
+            # Larger chunks for structured data (tables) - prevents splitting rows
+            chunks = chunker.chunk_by_paragraphs(content, max_chunk_size=2000, overlap=300)
+            logger.info(f'Created {len(chunks)} LARGE chunks for Excel/CSV document {document.file_name}')
+        else:
+            # Normal chunks for text documents
+            chunks = chunker.chunk_by_paragraphs(content, max_chunk_size=1000, overlap=200)
+            logger.info(f'Created {len(chunks)} chunks for document {document.file_name}')
         
         task_status.progress = 30
         task_status.metadata = {'stage': 'generating_contexts', 'total_chunks': len(chunks)}
         task_status.save()
         
-        # Generate contexts for each chunk
+        # Generate contexts for each chunk using Anthropic Contextual Retrieval
         context_generator = ContextGenerator()
         chunk_contexts = []
+        
+        # Anthropic Contextual Retrieval with Prompt Caching
+        # This improves RAG accuracy by 49% according to Anthropic research
+        from anthropic import Anthropic
+        from django.conf import settings
+        import os
+        
+        # Check if contextual chunking is enabled (default: True with rate limiting)
+        enable_contextual_chunking = os.getenv('ENABLE_CONTEXTUAL_CHUNKING', 'true').lower() == 'true'
+        
+        # For large documents (>100 chunks) - disable to avoid rate limits
+        # But for normal Excel files with reasonable size, keep enabled
+        if len(chunks) > 100:
+            logger.warning(f'⚠️ Very large document ({len(chunks)} chunks) - disabling contextual chunking')
+            enable_contextual_chunking = False
+        
+        # For Excel/CSV files - use slower rate limit but keep enabled for better RAG quality
+        is_excel_csv = document.file_type in ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 
+                                               'application/vnd.ms-excel', 'text/csv']
+        
+        # Initialize rate limiter - slower for Excel/CSV (10 chunks/min vs 20)
+        if is_excel_csv and enable_contextual_chunking:
+            rate_limiter = AnthropicRateLimiter(tokens_per_minute=20000, tokens_per_chunk=2000)  # More conservative
+            logger.info(f'📊 Excel/CSV document - using conservative rate limit (10 chunks/min)')
+        else:
+            rate_limiter = AnthropicRateLimiter() if enable_contextual_chunking else None
+        
+        anthropic_client = None
+        if enable_contextual_chunking and hasattr(settings, 'ANTHROPIC_API_KEY') and settings.ANTHROPIC_API_KEY:
+            anthropic_client = Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+            logger.info('✅ Using Anthropic Claude Haiku with Prompt Caching + Rate Limiting')
+        else:
+            logger.info('⚡ Contextual chunking disabled - using fast simple context')
         
         for i, chunk_text in enumerate(chunks):
             position = 'beginning' if i == 0 else ('end' if i == len(chunks)-1 else 'middle')
             
-            context = context_generator.generate_chunk_context(
-                chunk_text=chunk_text,
-                document_name=document.file_name,
-                chunk_position=position
-            )
+            # Try Anthropic Contextual Retrieval first, fallback to simple context
+            if anthropic_client:
+                # Wait if we're hitting rate limits
+                if rate_limiter:
+                    rate_limiter.wait_if_needed()
+                
+                try:
+                    # Anthropic prompt for context generation WITH PROMPT CACHING
+                    # Cache the whole document once, reuse for all chunks (90% cheaper!)
+                    response = anthropic_client.messages.create(
+                        model="claude-3-5-haiku-20241022",
+                        max_tokens=200,
+                        temperature=0.0,
+                        system=[
+                            {
+                                "type": "text",
+                                "text": "You are a document context generator. Generate concise context for document chunks to improve search retrieval.",
+                                "cache_control": {"type": "ephemeral"}
+                            }
+                        ],
+                        messages=[
+                            {
+                                "role": "user",
+                                "content": [
+                                    {
+                                        "type": "text",
+                                        "text": f"<document>\n{content}\n</document>",
+                                        "cache_control": {"type": "ephemeral"}  # Cache entire document!
+                                    },
+                                    {
+                                        "type": "text",
+                                        "text": f"""Here is the chunk we want to situate within the whole document:
+<chunk>
+{chunk_text}
+</chunk>
+
+Please give a short succinct context to situate this chunk within the overall document for the purposes of improving search retrieval of the chunk. Answer only with the succinct context and nothing else."""
+                                    }
+                                ]
+                            }
+                        ]
+                    )
+                    
+                    context = response.content[0].text
+                    
+                    # Log cache performance
+                    usage = response.usage
+                    cache_read = getattr(usage, 'cache_read_input_tokens', 0)
+                    cache_creation = getattr(usage, 'cache_creation_input_tokens', 0)
+                    logger.info(f'Chunk {i}/{len(chunks)}: context={len(context)} chars, cache_read={cache_read}, cache_creation={cache_creation}')
+                    
+                except Exception as e:
+                    logger.warning(f'Anthropic context generation failed for chunk {i}: {e}, falling back to simple context')
+                    context = context_generator.generate_chunk_context(
+                        chunk_text=chunk_text,
+                        document_name=document.file_name,
+                        chunk_position=position
+                    )
+            else:
+                # Fallback to simple context generation
+                context = context_generator.generate_chunk_context(
+                    chunk_text=chunk_text,
+                    document_name=document.file_name,
+                    chunk_position=position
+                )
             
             chunk_contexts.append((chunk_text, context))
             
@@ -275,7 +414,8 @@ def _read_document_content(doc: Document) -> str:
     
     try:
         from accounts.document_parser import parse_document
-        text, _ = parse_document(file_path, doc.file_name)
+        # Use actual file path for extension detection, not display name
+        text, _ = parse_document(file_path, os.path.basename(file_path))
         
         if text:
             # Save extracted text for future use

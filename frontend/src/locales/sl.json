@@ -1,0 +1,17 @@
+{
+  "ai": {
+    "selectModel": "Izberi AI Model",
+    "noModelsAvailable": "Ni razpoložljivih modelov",
+    "modelDetails": "Podrobnosti Modela",
+    "provider": "Ponudnik",
+    "contextWindow": "Kontekstno Okno",
+    "costPer1M": "Cena na 1M tokenov (vnos/izhod)",
+    "current": "Trenutni",
+    "failedToLoadModels": "Napaka pri nalaganju AI modelov",
+    "modelUpdated": "AI model posodobljen",
+    "failedToUpdateModel": "Napaka pri posodabljanju modela",
+    "thinkingProcess": "Proces Razmišljanja AI",
+    "details": "Podrobnosti",
+    "error": "Napaka"
+  }
+}

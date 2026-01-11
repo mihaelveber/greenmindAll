@@ -1,8 +1,59 @@
 from celery import shared_task
 from django.core.mail import send_mail
+from django.conf import settings
 import logging
+from accounts.token_tracking import OpenAIUsageTracker
+import anthropic
 
 logger = logging.getLogger(__name__)
+
+@shared_task
+def send_invitation_email_task(email: str, invited_by_name: str, role: str, temp_password: str, token: str, expires_at: str):
+    """
+    Celery task for sending invitation emails asynchronously
+    
+    Args:
+        email: Recipient email address
+        invited_by_name: Name of the person who sent the invitation
+        role: Role of the new user (admin/member)
+        temp_password: Temporary password
+        token: Invitation token
+        expires_at: Expiration datetime string
+    """
+    try:
+        accept_url = f"{settings.FRONTEND_URL}/accept-invitation?token={token}"
+        subject = f"Invitation to join {invited_by_name}'s team"
+        message = f"""
+Hello,
+
+You have been invited to join {invited_by_name}'s organization as a {role}.
+
+Your temporary credentials:
+Email: {email}
+Password: {temp_password}
+
+Please visit the following link to accept the invitation and set your permanent password:
+{accept_url}
+
+This invitation will expire on {expires_at}.
+
+Best regards,
+Greenmind AI Team
+        """
+        
+        send_mail(
+            subject,
+            message,
+            settings.DEFAULT_FROM_EMAIL,
+            [email],
+            fail_silently=False,
+        )
+        logger.info(f'Invitation email sent to {email}')
+        return True
+    except Exception as e:
+        logger.error(f'Failed to send invitation email to {email}: {str(e)}')
+        return False
+
 
 @shared_task
 def send_welcome_email(user_email: str, user_name: str):
@@ -42,12 +93,14 @@ def cleanup_inactive_users():
 
 
 @shared_task(bind=True)
-def generate_ai_answer_task(self, disclosure_id: int, user_id: int, ai_temperature: float = 0.2):
+def generate_ai_answer_task(self, disclosure_id: int, user_id: int, ai_temperature: float = 0.2, model_id: str = 'gpt-4o'):
     """
     Celery task za generiranje AI odgovora za eno disclosure točko
     Uses OpenAI Responses API with file_search tool for unlimited document size
+    Supports multiple LLM providers: OpenAI, Anthropic, Google
     """
     from accounts.models import ESRSUserResponse, ESRSDisclosure, DocumentEvidence, Document, User, AITaskStatus
+    from accounts.llm_router import LLMRouter
     from django.conf import settings
     import openai
     
@@ -64,7 +117,7 @@ def generate_ai_answer_task(self, disclosure_id: int, user_id: int, ai_temperatu
         user = User.objects.get(id=user_id)
         disclosure = ESRSDisclosure.objects.select_related('standard').get(id=disclosure_id)
         
-        logger.info(f'Generating AI answer for {disclosure.code} (user: {user.email}) using Responses API')
+        logger.info(f'Generating AI answer for {disclosure.code} (user: {user.email}) using model: {model_id}')
         
         # Get user response data
         user_notes = ""
@@ -78,10 +131,12 @@ def generate_ai_answer_task(self, disclosure_id: int, user_id: int, ai_temperatu
             pass
         
         task_status.progress = 30
+        task_status.current_step = "🔗 Auto-linking global documents..."
         task_status.save()
         
         # Auto-link global documents if not excluded
         global_documents = Document.objects.filter(user=user, is_global=True)
+        global_doc_count = global_documents.count()
         for global_doc in global_documents:
             evidence, created = DocumentEvidence.objects.get_or_create(
                 document=global_doc,
@@ -90,6 +145,8 @@ def generate_ai_answer_task(self, disclosure_id: int, user_id: int, ai_temperatu
                 is_excluded=False,  # Part of lookup - will not re-activate excluded docs
                 defaults={'notes': 'Auto-linked global document'}
             )
+        
+        logger.info(f'Auto-linked {global_doc_count} global documents to {disclosure.code}')
         
         # Get linked documents with evidence notes (excluding explicitly excluded global docs)
         evidence_list = list(
@@ -101,6 +158,8 @@ def generate_ai_answer_task(self, disclosure_id: int, user_id: int, ai_temperatu
         )
         
         task_status.progress = 50
+        task_status.current_step = f"📚 Analyzing {len(evidence_list)} linked documents..."
+        task_status.documents_used = len(evidence_list)
         task_status.save()
         
         # Check if we have RAG chunks available for semantic search
@@ -123,9 +182,7 @@ def generate_ai_answer_task(self, disclosure_id: int, user_id: int, ai_temperatu
                     linked_docs_context += "\n"
             
             # Prepare Responses API prompt
-            prompt = f"""You are an expert in European Sustainability Reporting Standards (ESRS).
-
-📋 DISCLOSURE REQUIREMENT:
+            prompt = f"""📋 DISCLOSURE REQUIREMENT:
 Standard: {disclosure.standard.code} - {disclosure.standard.name}
 Disclosure: {disclosure.code} - {disclosure.name}
 
@@ -136,7 +193,7 @@ Requirement: {disclosure_requirement}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-📝 USER'S MANUAL ANSWER:
+📝 USER'S EXISTING ANSWER (if any):
 {manual_answer if manual_answer else "No manual answer provided yet."}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -146,7 +203,11 @@ Requirement: {disclosure_requirement}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-TASK: Using the file_search tool to search through the user's uploaded documents, provide a comprehensive answer that addresses this ESRS disclosure requirement. Be specific, cite relevant information from the documents, and provide actionable guidance. Focus especially on documents linked to this disclosure."""
+YOUR TASK:
+Write a complete, professional answer for this disclosure requirement using the company documents provided below.
+- Include all relevant data, statistics, and information from the documents
+- Structure your answer appropriately for this type of disclosure
+- If certain required information is not available, note what is missing"""
 
             task_status.progress = 70
             task_status.save()
@@ -164,53 +225,239 @@ TASK: Using the file_search tool to search through the user's uploaded documents
             
             logger.info(f'Using RAG search on {len(relevant_doc_ids)} documents: {len(global_docs)} global + {len(specific_docs)} specific')
             
-            # Get RAG chunks from relevant documents
-            from accounts.models import DocumentChunk
-            relevant_chunks = DocumentChunk.objects.filter(
-                document_id__in=relevant_doc_ids
-            ).select_related('document').order_by('-created_at')[:20]  # Get up to 20 most recent chunks
+            task_status.current_step = f"🔍 Running TIER 1+2 RAG search on {len(relevant_doc_ids)} documents..."
+            task_status.save()
             
-            logger.info(f'Found {len(relevant_chunks)} relevant chunks from RAG search')
+            # Use unified TIER 1+2 RAG engine
+            from accounts.rag_tier_engine import run_tier_rag
             
-            # Build context from RAG chunks
-            rag_context = "\n\n📚 RELEVANT INFORMATION FROM YOUR DOCUMENTS:\n\n"
-            cited_documents = []
-            seen_docs = set()
+            query_text = f"{disclosure.code} {disclosure.name} {disclosure_requirement}"
             
-            for chunk in relevant_chunks:
-                doc = chunk.document
-                if doc.id not in seen_docs:
-                    cited_documents.append({
-                        'id': doc.id,
-                        'file_name': doc.file_name,
-                        'file_type': doc.file_type,
-                        'uploaded_at': doc.uploaded_at.isoformat()
-                    })
-                    seen_docs.add(doc.id)
-                
-                rag_context += f"[From {doc.file_name}]:\n{chunk.content}\n\n"
-            
-            # Add RAG context to prompt
-            full_prompt = prompt + rag_context
-            
-            logger.info(f'Built RAG context with {len(rag_context)} characters from {len(cited_documents)} documents')
-            
-            # Call OpenAI Chat Completions API with RAG context
-            client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
-            response = client.chat.completions.create(
-                model="gpt-4o",
-                messages=[{"role": "user", "content": full_prompt}],
-                max_tokens=2000,
+            # Run TIER 1+2 RAG with user's settings
+            rag_context, expanded_chunks, avg_confidence, processing_steps = run_tier_rag(
+                user=user,
+                query_text=query_text,
+                relevant_doc_ids=relevant_doc_ids,
                 temperature=ai_temperature
             )
             
-            # Extract AI answer from chat completion response
-            ai_answer = response.choices[0].message.content
+            logger.info(f'TIER RAG complete: {len(expanded_chunks)} chunks, {avg_confidence:.2%} confidence, context={len(rag_context)} chars')
+            
+            # Update task status with processing steps
+            task_status.current_step = f"📊 TIER RAG complete: {len(expanded_chunks)} chunks analyzed..."
+            task_status.chunks_used = len(expanded_chunks)
+            task_status.processing_steps = processing_steps  # Store for UI display
+            task_status.save()
+            
+            # Build cited documents list from expanded_chunks
+            cited_documents = []
+            seen_docs = set()
+            
+            for idx, (chunk, hybrid_score, semantic_score, bm25_score, chunk_type) in enumerate(expanded_chunks):
+                doc = chunk.document
+                
+                cited_documents.append({
+                    'id': doc.id,
+                    'file_name': doc.file_name,
+                    'file_type': doc.file_type,
+                    'chunk_text': chunk.content[:500],
+                    'full_chunk_text': chunk.content,
+                    'chunk_index': chunk.chunk_index,
+                    'relevance_score': hybrid_score,  # Real hybrid score from TIER 1
+                    'uploaded_at': doc.uploaded_at.isoformat(),
+                    'chunk_type': chunk_type  # 'main' or 'neighbor' from TIER 2
+                })
+                seen_docs.add(doc.id)
+            
+            # Add RAG context to prompt with clear header
+            full_prompt = prompt + f"""
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📄 COMPANY DOCUMENTS - EXTRACT DATA FROM HERE:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{rag_context}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Remember: Your answer MUST include specific numbers and statistics from the documents above!
+If the documents contain data like percentages (e.g., 0.70 = 70%), present them clearly.
+"""
+            
+            logger.info(f'Built TIER RAG context with {len(rag_context)} characters from {len(cited_documents)} chunks')
+            
+            task_status.current_step = f"🤖 Generating AI response using GPT-4o with context from {len(cited_documents)} sections..."
+            task_status.progress = 80
+            task_status.save()
+            
+            # Call OpenAI Chat Completions API with RAG context + track token usage
+            client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
+            
+            # Get organization owner for billing (team members bill to their admin)
+            if hasattr(user, 'team_role') and user.team_role:
+                org_owner = user.team_role.organization
+            else:
+                org_owner = user  # User is organization owner
+            
+            # Check if using OpenAI o1 reasoning models (gpt-5, gpt-5-mini, gpt-5-nano)
+            is_o1_model = model_id in ['gpt-5', 'gpt-5-mini', 'gpt-5-nano']
+            
+            # Check if using Claude models with Extended Thinking support
+            is_claude_model = model_id.startswith('claude-') if model_id else False
+            supports_extended_thinking = is_claude_model and model_id in [
+                'claude-sonnet-3-7', 'claude-sonnet-4', 'claude-sonnet-4-5',
+                'claude-haiku-4-5', 'claude-opus-4', 'claude-opus-4-1', 'claude-opus-4-5'
+            ]
+            
+            reasoning_summary = None
+            
+            # System message for all models - GENERIC for all disclosure types
+            esrs_system_message = """You are an expert sustainability report writer helping to answer ESRS disclosure requirements.
+
+Your task is to write a COMPLETE ANSWER for the disclosure requirement using the provided company documents.
+
+INSTRUCTIONS:
+1. EXTRACT and USE actual data, numbers, and facts from the provided documents
+2. Write the answer AS IF you are writing the actual sustainability report section
+3. Include specific numbers, percentages, dates, and statistics when available
+4. If documents contain numerical data (like 0.70), present it as percentages (70%)
+5. Structure your answer clearly with sections, tables, or bullet points as appropriate
+6. If certain required information is not available in the documents, clearly note what is missing
+7. Be comprehensive - cover all aspects of the disclosure requirement
+
+Write a professional answer that directly addresses the disclosure requirement using document data."""
+            
+            with OpenAIUsageTracker(user.id, org_owner.id, 'ai_answer', disclosure.id) as tracker:
+                if is_o1_model:
+                    # Use OpenAI Chat Completions API for o1/o3 models
+                    # Note: o1 models don't support system messages or temperature
+                    # Map gpt-5 names to actual OpenAI model names
+                    o1_model_map = {
+                        'gpt-5': 'o1',
+                        'gpt-5-mini': 'o1-mini', 
+                        'gpt-5-nano': 'o3-mini'
+                    }
+                    actual_model = o1_model_map.get(model_id, model_id)
+                    
+                    # Combine system message into user message for o1 models
+                    combined_prompt = f"{esrs_system_message}\n\n---\n\n{full_prompt}"
+                    
+                    response = client.chat.completions.create(
+                        model=actual_model,
+                        messages=[{"role": "user", "content": combined_prompt}],
+                        max_completion_tokens=4096
+                    )
+                    
+                    ai_answer = response.choices[0].message.content
+                    reasoning_summary = None  # o1 models don't expose reasoning in standard API
+                    
+                    tracker.record(response, model=actual_model)
+                elif is_claude_model:
+                    # Use Anthropic Messages API for Claude models
+                    anthropic_client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+                    
+                    # Map frontend model names to actual Anthropic API model names
+                    claude_model_map = {
+                        'claude-sonnet-3-7': 'claude-sonnet-4-20250514',  # Claude Sonnet 4 (latest)
+                        'claude-sonnet-4': 'claude-sonnet-4-20250514',
+                        'claude-sonnet-4-5': 'claude-sonnet-4-5-20250514',
+                        'claude-haiku-4-5': 'claude-haiku-4-5-20250514',
+                        'claude-opus-4': 'claude-opus-4-20250514',
+                        'claude-opus-4-1': 'claude-opus-4-20250514',
+                        'claude-opus-4-5': 'claude-opus-4-20250514',
+                    }
+                    actual_model = claude_model_map.get(model_id, model_id)
+                    logger.info(f'Claude model mapping: {model_id} -> {actual_model}')
+                    
+                    # Prepare request parameters - use same system message
+                    request_params = {
+                        "model": actual_model,
+                        "max_tokens": 4096,
+                        "system": esrs_system_message,  # Use unified system message
+                        "messages": [{"role": "user", "content": full_prompt}],
+                    }
+                    
+                    # Add Extended Thinking for supported models
+                    if supports_extended_thinking:
+                        request_params["thinking"] = {
+                            "type": "enabled",
+                            "budget_tokens": 2000  # Allow 2000 tokens for thinking
+                        }
+                        # Extended thinking requires temperature=1
+                        request_params["temperature"] = 1
+                        logger.info(f'Enabled Extended Thinking for {actual_model} with 2000 token budget (temperature=1 required)')
+                    else:
+                        # Only set temperature for non-thinking models
+                        request_params["temperature"] = ai_temperature
+                    
+                    response = anthropic_client.messages.create(**request_params)
+                    
+                    # Extract thinking content from response (Claude Extended Thinking)
+                    for content_block in response.content:
+                        if content_block.type == 'thinking':
+                            # Extended Thinking returns thinking content directly
+                            reasoning_summary = getattr(content_block, 'thinking', None)
+                            if reasoning_summary:
+                                logger.info(f'Extracted Claude thinking: {len(reasoning_summary)} chars')
+                            break
+                    
+                    # Extract answer from text content
+                    ai_answer = ""
+                    for content_block in response.content:
+                        if content_block.type == 'text':
+                            ai_answer += content_block.text
+                    
+                    # Track usage (adapt to Anthropic response format)
+                    # Note: Anthropic uses different usage format - will need to adapt tracker
+                    logger.info(f'Claude response: input_tokens={response.usage.input_tokens}, output_tokens={response.usage.output_tokens}')
+                else:
+                    # Use Chat Completions API for non-o1 models (GPT-4o, etc.)
+                    response = client.chat.completions.create(
+                        model=model_id if model_id else "gpt-4o",
+                        messages=[
+                            {"role": "system", "content": esrs_system_message},
+                            {"role": "user", "content": full_prompt}
+                        ],
+                        max_tokens=2000,
+                        temperature=ai_temperature
+                    )
+                    ai_answer = response.choices[0].message.content
+                    tracker.record(response, model=model_id if model_id else "gpt-4o")
+            
+            # Store reasoning summary if available
+            if reasoning_summary:
+                task_status.reasoning_summary = reasoning_summary
+                task_status.save()
             
             if not ai_answer:
                 raise ValueError('No answer generated by OpenAI')
             
             logger.info(f'Generated AI answer using RAG: {len(ai_answer)} characters')
+            
+            # TIER 3: LLM Self-Reflection + Reranking (if confidence < 85%)
+            task_status.current_step = f"🔬 Running TIER 3 refinement (confidence: {avg_confidence:.1%})..."
+            task_status.save()
+            
+            from accounts.rag_tier_engine import run_tier3_refinement
+            
+            refined_answer, final_confidence, updated_steps = run_tier3_refinement(
+                user=user,
+                query_text=query_text,
+                context=rag_context,
+                initial_answer=ai_answer,
+                confidence=avg_confidence,
+                expanded_chunks=expanded_chunks,
+                processing_steps=processing_steps
+            )
+            
+            # Use refined answer and confidence
+            ai_answer = refined_answer
+            avg_confidence = final_confidence
+            processing_steps = updated_steps
+            
+            # Update task_status with TIER 3 processing steps
+            task_status.processing_steps = processing_steps
+            task_status.save()
+            
+            logger.info(f'TIER 3 complete: Final confidence {avg_confidence:.2%}')
         
         else:
             # Generate AI answer WITHOUT file_search for users with old documents (pre-migration)
@@ -238,14 +485,20 @@ REQUIREMENT:
             if manual_answer:
                 system_prompt += f"\n\nMANUAL ANSWER PROVIDED:\n{manual_answer}"
             
-            # Call Chat Completions API without file_search
+            # Call Chat Completions API without file_search + track token usage
             client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
-            response = client.chat.completions.create(
-                model="gpt-4o",
-                messages=[{"role": "user", "content": system_prompt}],
-                max_tokens=2000,
-                temperature=ai_temperature
-            )
+            
+            # Get organization owner for billing
+            org_owner = user
+            
+            with OpenAIUsageTracker(user.id, org_owner.id, 'ai_answer', disclosure.id) as tracker:
+                response = client.chat.completions.create(
+                    model="gpt-4o",
+                    messages=[{"role": "user", "content": system_prompt}],
+                    max_tokens=2000,
+                    temperature=ai_temperature
+                )
+                tracker.record(response, model="gpt-4o")
             
             # Extract answer from chat completion response
             ai_answer = response.choices[0].message.content
@@ -257,32 +510,42 @@ REQUIREMENT:
         
         # Common code for both paths
         task_status.progress = 90
+        task_status.current_step = "📊 Calculating confidence score..."
         task_status.save()
         
-        # Calculate confidence score (% from documents vs AI reasoning)
-        def calculate_confidence_score(answer_text: str, cited_docs: list) -> float:
-            """Calculate confidence: % of sentences with document citations"""
-            if not answer_text or not cited_docs:
-                return 0.0
+        # Calculate confidence score from TIER RAG or basic calculation
+        if has_rag_chunks and cited_documents:
+            # Use avg_confidence from TIER RAG (real hybrid scores)
+            confidence_score = round(avg_confidence * 100, 1)
+            logger.info(f'Using TIER RAG confidence score: {confidence_score}% (hybrid search)')
+        else:
+            # Fallback: basic confidence calculation for old system
+            def calculate_confidence_score(answer_text: str, cited_docs: list) -> float:
+                """Calculate confidence: % of sentences with document citations"""
+                if not answer_text or not cited_docs:
+                    return 0.0
+                
+                # Split into sentences (simple approach)
+                sentences = [s.strip() for s in answer_text.split('.') if s.strip()]
+                if not sentences:
+                    return 0.0
+                
+                # Count sentences with citations
+                cited_sentences = sum(1 for s in sentences if any(keyword in s.lower() for keyword in ['document', 'file', 'according to', 'based on', 'source', 'from the']))
+                
+                # If we have cited documents, assume higher confidence
+                base_confidence = (cited_sentences / len(sentences)) * 100
+                if len(cited_docs) > 0:
+                    base_confidence = min(base_confidence + 20, 100)
+                
+                return round(base_confidence, 1)
             
-            # Split into sentences (simple approach)
-            sentences = [s.strip() for s in answer_text.split('.') if s.strip()]
-            if not sentences:
-                return 0.0
-            
-            # Count sentences with citations (looking for keywords like "document", "file", "according to")
-            cited_sentences = sum(1 for s in sentences if any(keyword in s.lower() for keyword in ['document', 'file', 'according to', 'based on', 'source', 'from the']))
-            
-            # If we have cited documents, assume higher confidence
-            base_confidence = (cited_sentences / len(sentences)) * 100
-            if len(cited_docs) > 0:
-                # Boost confidence if we have documents
-                base_confidence = min(base_confidence + 20, 100)
-            
-            return round(base_confidence, 1)
+            confidence_score = calculate_confidence_score(ai_answer, cited_documents)
+            logger.info(f'Calculated confidence score: {confidence_score}% (basic calculation)')
         
-        confidence_score = calculate_confidence_score(ai_answer, cited_documents)
-        logger.info(f'Calculated confidence score: {confidence_score}% (from documents)')
+        task_status.confidence_score = confidence_score
+        task_status.current_step = f"✅ Finalizing answer (Confidence: {confidence_score}%)..."
+        task_status.save()
         
         # Prepare source information
         sources = {
@@ -351,7 +614,9 @@ REQUIREMENT:
                 'ai_temperature': ai_temperature,
                 'numeric_data': analytics.get('numeric_data') if analytics else None,
                 'chart_data': analytics.get('charts') if analytics else None,
-                'table_data': analytics.get('tables') if analytics else None
+                'table_data': analytics.get('tables') if analytics else None,
+                'created_by': user,
+                'modified_by': user
             }
         )
         
@@ -360,12 +625,65 @@ REQUIREMENT:
             user_response.ai_sources = sources
             user_response.confidence_score = confidence_score
             user_response.ai_temperature = ai_temperature
+            user_response.modified_by = user
             # Update analytics data
             if analytics:
                 user_response.numeric_data = analytics.get('numeric_data')
                 user_response.chart_data = analytics.get('charts')
                 user_response.table_data = analytics.get('tables')
             user_response.save()
+        
+        # === CREATE VERSION FOR AI ANSWER ===
+        from accounts.models import ItemVersion
+        
+        # Get latest version number
+        latest_version = ItemVersion.objects.filter(
+            item_type='TEXT',
+            item_id=user_response.id,
+            user=user
+        ).order_by('-version_number').first()
+        
+        next_version_number = (latest_version.version_number + 1) if latest_version else 1
+        
+        # Create new version
+        ItemVersion.objects.create(
+            item_type='TEXT',
+            item_id=user_response.id,
+            user=user,
+            disclosure=disclosure,
+            version_number=next_version_number,
+            content={'text': ai_answer, 'format': 'markdown'},
+            change_type='INITIAL',
+            change_description=f'AI generated answer (temperature: {ai_temperature}, confidence: {confidence_score}%)',
+            created_by_user=False,  # AI generated
+            created_by=user,  # Track which user triggered the AI generation
+            is_selected=True,  # Auto-select latest AI answer
+            parent_version=latest_version
+        )
+        
+        # Deselect previous versions
+        if latest_version:
+            ItemVersion.objects.filter(
+                item_type='TEXT',
+                item_id=user_response.id,
+                user=user
+            ).exclude(version_number=next_version_number).update(is_selected=False)
+        
+        # Log activity for AI answer generation
+        from accounts.team_models import ActivityLog, UserRole
+        organization = user if user.is_organization_owner else UserRole.objects.filter(user=user).first().organization if UserRole.objects.filter(user=user).exists() else user
+        ActivityLog.objects.create(
+            user=user,
+            organization=organization,
+            action='ai_answer',
+            disclosure=disclosure,
+            details={
+                'confidence_score': confidence_score,
+                'temperature': ai_temperature,
+                'charts_count': len(analytics.get('charts', [])) if analytics else 0,
+                'chunks_used': len(cited_documents)
+            }
+        )
         
         # Mark task as completed
         task_status.status = 'completed'

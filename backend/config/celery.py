@@ -10,6 +10,9 @@ app.autodiscover_tasks()
 # Import RAG tasks explicitly
 app.autodiscover_tasks(['accounts.document_rag_tasks'], related_name='')
 
+# Import website scraper tasks explicitly
+app.autodiscover_tasks(['accounts.website_scraper_task'], related_name='')
+
 @app.task(bind=True)
 def debug_task(self):
     print(f'Request: {self.request!r}')

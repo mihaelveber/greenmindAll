@@ -1,0 +1,17 @@
+{
+  "ai": {
+    "selectModel": "Select AI Model",
+    "noModelsAvailable": "No models available",
+    "modelDetails": "Model Details",
+    "provider": "Provider",
+    "contextWindow": "Context Window",
+    "costPer1M": "Cost per 1M tokens (input/output)",
+    "current": "Current",
+    "failedToLoadModels": "Failed to load AI models",
+    "modelUpdated": "AI model preference updated",
+    "failedToUpdateModel": "Failed to update model preference",
+    "thinkingProcess": "AI Thinking Process",
+    "details": "Details",
+    "error": "Error"
+  }
+}

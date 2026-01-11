@@ -48,14 +48,6 @@
               />
             </n-form-item>
             
-            <n-form-item label="Primary Color">
-              <n-color-picker
-                v-model:value="chartConfig.primaryColor"
-                :modes="['hex']"
-                @update:value="handleConfigChange"
-              />
-            </n-form-item>
-            
             <n-form-item label="Show Legend">
               <n-switch
                 v-model:value="chartConfig.showLegend"
@@ -177,29 +169,39 @@ const chartConfig = ref<ChartConfig>({
 // Initialize from props
 const initializeData = () => {
   if (props.chartData) {
-    // Parse existing chart data
-    const { type, data, options } = props.chartData
+    // Parse existing chart data (ChartRenderer format)
+    const { type, title, data, config } = props.chartData
     
     chartConfig.value.type = type || 'bar'
-    chartConfig.value.title = options?.title?.text || 'Chart Title'
-    chartConfig.value.showLegend = options?.plugins?.legend?.display ?? true
-    chartConfig.value.showGrid = options?.scales?.y?.grid?.display ?? true
-    chartConfig.value.animated = options?.animation !== false
+    chartConfig.value.title = title || 'Chart Title'
+    chartConfig.value.showLegend = config?.show_legend ?? true
+    chartConfig.value.showGrid = config?.show_grid ?? true
+    chartConfig.value.animated = config?.animated ?? true
+    chartConfig.value.primaryColor = config?.colors?.[0] || '#54d944'
     
     // Convert chart data to table format
-    if (data?.labels && data?.datasets) {
-      localData.value = data.labels.map((label: string, idx: number) => ({
+    if (Array.isArray(data)) {
+      const defaultColors = ['#54d944', '#ff6b6b', '#4ecdc4', '#ffd93d', '#a29bfe', '#fd79a8', '#74b9ff']
+      localData.value = data.map((item: any, idx: number) => ({
         id: idx + 1,
-        label: label,
-        value: data.datasets[0]?.data[idx] || 0
+        label: item.label || `Category ${idx + 1}`,
+        value: item.value || 0,
+        color: item.color || defaultColors[idx % defaultColors.length]
       }))
+    } else {
+      // Fallback: default data
+      localData.value = [
+        { id: 1, label: 'Category 1', value: 100, color: '#54d944' },
+        { id: 2, label: 'Category 2', value: 200, color: '#ff6b6b' },
+        { id: 3, label: 'Category 3', value: 150, color: '#4ecdc4' }
+      ]
     }
   } else {
     // Default data
     localData.value = [
-      { id: 1, label: 'Category 1', value: 100 },
-      { id: 2, label: 'Category 2', value: 200 },
-      { id: 3, label: 'Category 3', value: 150 }
+      { id: 1, label: 'Category 1', value: 100, color: '#54d944' },
+      { id: 2, label: 'Category 2', value: 200, color: '#ff6b6b' },
+      { id: 3, label: 'Category 3', value: 150, color: '#4ecdc4' }
     ]
   }
 }
@@ -237,6 +239,7 @@ const dataColumns = [
   {
     title: 'Value',
     key: 'value',
+    width: 120,
     render: (row: any, index: number) => {
       return h(NInput, {
         value: String(row.value),
@@ -247,63 +250,39 @@ const dataColumns = [
         placeholder: 'Enter value...'
       })
     }
+  },
+  {
+    title: 'Color',
+    key: 'color',
+    width: 100,
+    render: (row: any, index: number) => {
+      return h(NColorPicker, {
+        value: row.color || '#54d944',
+        modes: ['hex'],
+        onUpdateValue: (val: string) => {
+          localData.value[index].color = val
+        }
+      })
+    }
   }
 ]
 
-// Preview chart data
+// Preview chart data - format for ChartRenderer
 const previewChartData = computed(() => {
-  const labels = localData.value.map(d => d.label)
-  const values = localData.value.map(d => d.value)
-  
   return {
+    id: props.chartData?.id, // Preserve chart ID
     type: chartConfig.value.type,
-    data: {
-      labels: labels,
-      datasets: [{
-        label: chartConfig.value.title,
-        data: values,
-        backgroundColor: chartConfig.value.primaryColor + '80', // 50% opacity
-        borderColor: chartConfig.value.primaryColor,
-        borderWidth: 2
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      animation: chartConfig.value.animated ? {
-        duration: 750,
-        easing: 'easeInOutQuart'
-      } : false,
-      plugins: {
-        title: {
-          display: true,
-          text: chartConfig.value.title,
-          font: {
-            size: 16,
-            weight: 'bold'
-          },
-          color: '#54d944'
-        },
-        legend: {
-          display: chartConfig.value.showLegend,
-          position: 'top' as const
-        }
-      },
-      scales: chartConfig.value.type === 'bar' || chartConfig.value.type === 'line' ? {
-        y: {
-          beginAtZero: true,
-          grid: {
-            display: chartConfig.value.showGrid,
-            color: 'rgba(84, 217, 68, 0.1)'
-          }
-        },
-        x: {
-          grid: {
-            display: chartConfig.value.showGrid,
-            color: 'rgba(84, 217, 68, 0.1)'
-          }
-        }
-      } : undefined
+    title: chartConfig.value.title,
+    data: localData.value.map(d => ({
+      label: d.label,
+      value: d.value,
+      color: d.color || chartConfig.value.primaryColor
+    })),
+    config: {
+      show_legend: chartConfig.value.showLegend,
+      show_grid: chartConfig.value.showGrid,
+      animated: chartConfig.value.animated,
+      colors: localData.value.map(d => d.color || chartConfig.value.primaryColor)
     }
   }
 })

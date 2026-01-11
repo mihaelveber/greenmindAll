@@ -18,7 +18,7 @@
               <VersionNode 
                 :version="rootVersion" 
                 :selected-version-id="selectedVersionId"
-                :children="getChildren(rootVersion.id)"
+                :all-versions="treeData"
                 @select="handleSelectVersion"
                 @view="handleViewVersion"
                 @delete="handleDeleteVersion"
@@ -84,7 +84,9 @@ const getChildren = (parentId: string): Version[] => {
 const loadVersions = async () => {
   loading.value = true
   try {
+    console.log(`📊 Loading versions for:`, { itemType: props.itemType, itemId: props.itemId })
     const response = await api.get(`/versions/${props.itemType}/${props.itemId}`)
+    console.log(`📊 Versions loaded:`, response.data.versions.length, response.data.versions)
     treeData.value = response.data.versions
     
     // Find selected version

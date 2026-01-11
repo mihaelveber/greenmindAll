@@ -12,6 +12,10 @@
       <Line :data="lineChartData" :options="lineChartOptions" />
     </div>
 
+    <div v-else-if="chartData.type === 'doughnut'" class="chart-container">
+      <Doughnut :data="doughnutChartData" :options="doughnutChartOptions" />
+    </div>
+
     <div v-else class="chart-error">
       <n-alert type="error" title="Unknown Chart Type">
         Chart type "{{ chartData.type }}" is not supported.
@@ -23,7 +27,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { NAlert } from 'naive-ui'
-import { Bar, Pie, Line } from 'vue-chartjs'
+import { Bar, Pie, Line, Doughnut } from 'vue-chartjs'
 import {
   Chart as ChartJS,
   Title,
@@ -199,6 +203,30 @@ const lineChartOptions = computed(() => ({
         display: !!props.chartData.config?.ylabel,
         text: props.chartData.config?.ylabel || ''
       }
+    }
+  }
+}))
+
+// Doughnut chart configuration
+const doughnutChartData = computed(() => ({
+  labels: chartDataArray.value.map(d => d.label),
+  datasets: [{
+    data: chartDataArray.value.map(d => d.value),
+    backgroundColor: chartDataArray.value.map(d => d.color || props.chartData.config?.colors?.[0] || '#8884d8')
+  }]
+}))
+
+const doughnutChartOptions = computed(() => ({
+  responsive: true,
+  maintainAspectRatio: false,
+  plugins: {
+    legend: {
+      display: props.chartData.config?.show_legend !== false,
+      position: 'right' as const
+    },
+    title: {
+      display: true,
+      text: props.chartData.title
     }
   }
 }))

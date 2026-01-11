@@ -116,6 +116,10 @@
                   :name="disclosure.id.toString()"
                   :id="`disclosure-${disclosure.id}`"
                   class="disclosure-item"
+                  :class="{
+                    'assigned-other': isAssignedToOther(disclosure.id),
+                    'assigned-me': isAssignedToMe(disclosure.id)
+                  }"
                 >
                   <template #header-extra>
                     <n-tag v-if="disclosure.is_mandatory" type="error" size="small">
@@ -224,12 +228,14 @@
                           </n-space>
                         </template>
                         <div v-html="parseMarkdownToHtml(disclosureResponses[disclosure.id].ai_answer)" style="max-height: 400px; overflow-y: auto;" class="markdown-content"></div>
-                        <template #action>
-                          <n-space>
-                            <n-button
-                              text
-                              type="success"
-                              @click="openChatInterface(disclosure, 'TEXT')"
+                      </n-alert>
+                      
+                      <!-- Action Buttons Below AI Answer -->
+                      <n-space style="margin-top: 12px;">
+                        <n-button
+                          text
+                          type="success"
+                          @click="openChatInterface(disclosure, 'TEXT')"
                             >
                               <template #icon>
                                 <n-icon :component="ChatbubbleOutline" />
@@ -275,7 +281,7 @@
                       <n-space style="margin-top: 12px;">
                         <n-button 
                           type="success"
-                          :disabled="!disclosureResponses[disclosure.id]?.ai_answer || activeConversations[disclosure.id]"
+                          :disabled="!disclosureResponses[disclosure.id]?.ai_answer || !!activeConversations[disclosure.id]"
                           @click="startConversation(disclosure)"
                         >
                           <template #icon>
@@ -359,7 +365,7 @@
                             <div v-for="(table, idx) in disclosureResponses[disclosure.id].table_data" :key="idx">
                               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                                 <n-text strong>{{ table.title }}</n-text>
-                                <n-button size="tiny" type="success" @click="openTableEditorModal(disclosure.id, table)" ghost>
+                                <n-button size="tiny" type="success" @click="openTableEditorModal(disclosure.id, table, idx)" ghost>
                                   <template #icon>
                                     <n-icon :component="CreateSharp" />
                                   </template>
@@ -418,81 +424,156 @@
 
                     <n-divider />
 
-                    <n-space>
-                      <n-button 
-                        :type="disclosureResponses[disclosure.id]?.is_completed ? 'success' : 'default'" 
-                        size="small"
-                        @click="toggleCompletion(disclosure.id)"
-                      >
-                        <template #icon>
-                          <n-icon :component="CheckmarkCircleOutline" />
+                    <!-- AI Model Selection -->
+                    <n-alert type="success" style="margin-bottom: 16px;">
+                      <template #header>
+                        <n-space align="center">
+                          <n-icon :component="SparklesOutline" size="20" />
+                          <n-text strong>🤖 AI Model</n-text>
+                        </n-space>
+                      </template>
+                      <n-space vertical :size="12">
+                        <n-select
+                          :value="selectedAIModel[disclosure.id] || defaultAIModel"
+                          @update:value="(value: string) => {
+                            selectedAIModel[disclosure.id] = value
+                            // Update default for all future disclosures
+                            defaultAIModel = value
+                            localStorage.setItem('defaultAIModel', value)
+                            localStorage.setItem(`ai-model-${disclosure.id}`, value)
+                          }"
+                          :options="aiModelOptions"
+                          :placeholder="`Select AI Model (default: ${defaultAIModel})`"
+                          style="width: 100%;"
+                        />
+                        <n-text depth="3" style="font-size: 12px;">
+                          {{ getModelDescription(selectedAIModel[disclosure.id] || defaultAIModel) }}
+                        </n-text>
+                      </n-space>
+                    </n-alert>
+
+                    <n-space vertical :size="10">
+                      <n-space align="center" :size="10">
+                        <!-- Assignment status - always visible -->
+                        <n-tag v-if="disclosureAssignments[disclosure.id]" :type="isAssignedToMe(disclosure.id) ? 'success' : 'warning'" size="small" :bordered="false">
+                          👤 Assigned to {{ assignmentLabel(disclosure.id) }}
+                        </n-tag>
+
+                        <!-- Action buttons - only for admin or assigned user -->
+                        <template v-if="canEditDisclosure(disclosure.id)">
+                          <n-button 
+                            :type="disclosureResponses[disclosure.id]?.is_completed ? 'success' : 'default'" 
+                            size="small"
+                            @click="toggleCompletion(disclosure.id)"
+                          >
+                            <template #icon>
+                              <n-icon :component="CheckmarkCircleOutline" />
+                            </template>
+                            {{ disclosureResponses[disclosure.id]?.is_completed ? 'Completed' : 'Mark as Completed' }}
+                          </n-button>
+
+                          <n-dropdown
+                            v-if="isAdmin && teamMembers.length > 0"
+                            trigger="click"
+                            :options="assignmentOptions"
+                            @select="(value: number) => handleAssignDisclosure(disclosure.id, value)"
+                          >
+                            <n-button size="small" type="info" :loading="assigning[disclosure.id]">
+                              <template #icon>
+                                <n-icon :component="LinkOutline" />
+                              </template>
+                              Assign
+                            </n-button>
+                          </n-dropdown>
+
+                          <n-button
+                            v-if="disclosureAssignments[disclosure.id]"
+                            size="small"
+                            type="warning"
+                            ghost
+                            :loading="assigning[disclosure.id]"
+                            @click="handleAssignDisclosure(disclosure.id, null)"
+                          >
+                            Cancel assignment
+                          </n-button>
                         </template>
-                        {{ disclosureResponses[disclosure.id]?.is_completed ? 'Completed' : 'Mark as Completed' }}
-                      </n-button>
-                      <n-button size="small" type="info" @click="openUploadEvidenceModal(disclosure)">
-                        <template #icon>
-                          <n-icon :component="CloudUploadOutline" />
-                        </template>
-                        Upload Evidence
-                      </n-button>
-                      <n-button size="small" type="warning" @click="openNotesModal(disclosure)">
-                        <template #icon>
-                          <n-icon :component="CreateOutline" />
-                        </template>
-                        Add Notes
-                      </n-button>
-                      <n-button 
-                        size="small" 
-                        type="success"
-                        @click="openManualAnswerModal(disclosure)"
-                      >
-                        <template #icon>
-                          <n-icon :component="CreateSharp" />
-                        </template>
-                        {{ disclosureResponses[disclosure.id]?.manual_answer ? '✏️ Edit Answer' : '✍️ Write Answer' }}
-                      </n-button>
-                      <n-button 
-                        size="small" 
-                        type="primary" 
-                        :loading="loadingAI[disclosure.id]"
-                        :disabled="loadingAI[disclosure.id]"
-                        @click="getAIAnswer(disclosure)"
-                      >
-                        <template #icon>
-                          <n-icon :component="SparklesOutline" />
-                        </template>
-                        Get AI Answer
-                      </n-button>
-                      <n-button 
-                        size="small" 
-                        type="info"
-                        :loading="loadingCharts[disclosure.id]"
-                        :disabled="!disclosureResponses[disclosure.id]?.ai_answer"
-                        @click="extractChartsAndTables(disclosure.id)"
-                      >
-                        <template #icon>
-                          <n-icon :component="StatsChartOutline" />
-                        </template>
-                        Extract Charts
-                      </n-button>
-                      <n-button 
-                        size="small" 
-                        type="success"
-                        :loading="loadingImage[disclosure.id]"
-                        :disabled="!disclosureResponses[disclosure.id]?.ai_answer"
-                        @click="openGenerateImageModal(disclosure)"
-                      >
-                        <template #icon>
-                          <n-icon :component="ImageOutline" />
-                        </template>
-                        Generate Image
-                      </n-button>
-                      <n-button size="small" type="error" @click="openFinalAnswerModal(disclosure)">
-                        <template #icon>
-                          <n-icon :component="CheckmarkCircleOutline" />
-                        </template>
-                        Approved Answer
-                      </n-button>
+                      </n-space>
+
+                      <!-- Action buttons row - only for admin or assigned user -->
+                      <n-space v-if="canEditDisclosure(disclosure.id)">
+                        <n-button 
+                          size="small" 
+                          type="info" 
+                          @click="openUploadEvidenceModal(disclosure)"
+                        >
+                          <template #icon>
+                            <n-icon :component="CloudUploadOutline" />
+                          </template>
+                          Upload Evidence
+                        </n-button>
+                        <n-button 
+                          size="small" 
+                          type="warning" 
+                          @click="openNotesModal(disclosure)"
+                        >
+                          <template #icon>
+                            <n-icon :component="CreateOutline" />
+                          </template>
+                          Add Notes
+                        </n-button>
+                        <n-button 
+                          size="small" 
+                          type="success"
+                          @click="openManualAnswerModal(disclosure)"
+                        >
+                          <template #icon>
+                            <n-icon :component="CreateSharp" />
+                          </template>
+                          {{ disclosureResponses[disclosure.id]?.manual_answer ? '✏️ Edit Answer' : '✍️ Write Answer' }}
+                        </n-button>
+                        <n-button 
+                          size="small" 
+                          type="primary" 
+                          :loading="loadingAI[disclosure.id]"
+                          :disabled="loadingAI[disclosure.id]"
+                          @click="getAIAnswer(disclosure)"
+                        >
+                          <template #icon>
+                            <n-icon :component="SparklesOutline" />
+                          </template>
+                          Get AI Answer
+                        </n-button>
+                        <n-button 
+                          size="small" 
+                          type="info"
+                          :loading="loadingCharts[disclosure.id]"
+                          :disabled="!disclosureResponses[disclosure.id]?.ai_answer"
+                          @click="extractChartsAndTables(disclosure.id)"
+                        >
+                          <template #icon>
+                            <n-icon :component="StatsChartOutline" />
+                          </template>
+                          Extract Charts
+                        </n-button>
+                        <n-button 
+                          size="small" 
+                          type="success"
+                          :loading="loadingImage[disclosure.id]"
+                          :disabled="!disclosureResponses[disclosure.id]?.ai_answer"
+                          @click="openGenerateImageModal(disclosure)"
+                        >
+                          <template #icon>
+                            <n-icon :component="ImageOutline" />
+                          </template>
+                          Generate Image
+                        </n-button>
+                        <n-button size="small" type="error" @click="openFinalAnswerModal(disclosure)">
+                          <template #icon>
+                            <n-icon :component="CheckmarkCircleOutline" />
+                          </template>
+                          Approved Answer
+                        </n-button>
+                      </n-space>
                     </n-space>
 
                     <!-- Sub-disclosures section -->
@@ -546,20 +627,22 @@
                     <div v-if="disclosureResponses[subDisclosure.id]?.ai_answer" class="ai-answer-section">
                       <n-alert type="info" title="AI Analysis" closable>
                         <div v-html="parseMarkdownToHtml(disclosureResponses[subDisclosure.id].ai_answer)" style="max-height: 400px; overflow-y: auto;" class="markdown-content"></div>
-                        <template #action>
-                          <n-button
-                            v-if="disclosureResponses[subDisclosure.id]?.ai_sources"
-                            text
-                            type="info"
-                            @click="openSourcesModal(subDisclosure.id)"
-                          >
-                            <template #icon>
-                              <n-icon :component="BookOutline" />
-                            </template>
-                            View Sources
-                          </n-button>
-                        </template>
                       </n-alert>
+                      
+                      <!-- Action Buttons Below AI Answer -->
+                      <n-space style="margin-top: 12px;">
+                        <n-button
+                          v-if="disclosureResponses[subDisclosure.id]?.ai_sources"
+                          text
+                          type="info"
+                          @click="openSourcesModal(subDisclosure.id)"
+                        >
+                          <template #icon>
+                            <n-icon :component="BookOutline" />
+                          </template>
+                          View Sources
+                        </n-button>
+                      </n-space>
                       
                       <!-- Charts Section -->
                       <div v-if="disclosureResponses[subDisclosure.id]?.chart_data && disclosureResponses[subDisclosure.id].chart_data.length > 0" style="margin-top: 16px;">
@@ -671,7 +754,41 @@
 
                     <n-divider />
 
-                    <n-space>
+                    <!-- Assignment status for sub-disclosure - always visible -->
+                    <n-space align="center" :size="10" style="margin-bottom: 12px;">
+                      <n-tag v-if="disclosureAssignments[subDisclosure.id]" :type="isAssignedToMe(subDisclosure.id) ? 'success' : 'warning'" size="small" :bordered="false">
+                        👤 Assigned to {{ assignmentLabel(subDisclosure.id) }}
+                      </n-tag>
+                      
+                      <!-- Assignment dropdown - admin only -->
+                      <n-dropdown
+                        v-if="isAdmin && teamMembers.length > 0"
+                        trigger="click"
+                        :options="assignmentOptions"
+                        @select="(value: number) => handleAssignDisclosure(subDisclosure.id, value)"
+                      >
+                        <n-button size="small" type="info" :loading="assigning[subDisclosure.id]">
+                          <template #icon>
+                            <n-icon :component="LinkOutline" />
+                          </template>
+                          Assign
+                        </n-button>
+                      </n-dropdown>
+                      
+                      <n-button
+                        v-if="disclosureAssignments[subDisclosure.id] && canEditDisclosure(subDisclosure.id)"
+                        size="small"
+                        type="warning"
+                        ghost
+                        :loading="assigning[subDisclosure.id]"
+                        @click="handleAssignDisclosure(subDisclosure.id, null)"
+                      >
+                        Cancel assignment
+                      </n-button>
+                    </n-space>
+
+                    <!-- Action buttons - only for admin or assigned user -->
+                    <n-space v-if="canEditDisclosure(subDisclosure.id)">
                       <n-button 
                         :type="disclosureResponses[subDisclosure.id]?.is_completed ? 'success' : 'default'" 
                         size="small"
@@ -1421,6 +1538,11 @@ interface UserResponse {
   is_completed: boolean
   ai_answer: string | null
   final_answer: string | null
+  ai_sources?: any
+  confidence_score?: number | null
+  chart_data?: Array<any>
+  table_data?: Array<any>
+  ai_temperature?: number
 }
 
 interface DocumentEvidence {
@@ -1460,6 +1582,9 @@ const excludedDocuments = ref<Record<number, DocumentEvidence[]>>({})  // Exclud
 const loadingAI = ref<Record<number, boolean>>({})
 const loadingCharts = ref<Record<number, boolean>>({})
 const loadingImage = ref<Record<number, boolean>>({})
+const assigning = ref<Record<number, boolean>>({})
+const currentUserId = ref<number | null>(null)
+const isAdmin = ref<boolean>(false)
 
 // Conversation thread state
 const activeConversations = ref<Record<number, number>>({}) // disclosureId -> threadId
@@ -1476,8 +1601,117 @@ const aiTaskStatus = ref<Record<number, { progress: number; status: string; task
 const pollingIntervals = ref<Record<string, ReturnType<typeof setInterval>>>({})
 const aiTemperatures = ref<Record<number, number>>({})
 
+// Team Assignment
+interface TeamMember {
+  id: number
+  email: string
+  role: string
+}
+const teamMembers = ref<TeamMember[]>([])
+const disclosureAssignments = ref<Record<number, number | null>>({}) // disclosure_id -> assigned_to_id
+
+// AI Model Selection with Default Persistence
+const defaultAIModel = ref(localStorage.getItem('defaultAIModel') || 'gpt-4o')
+const selectedAIModel = ref<Record<number, string>>({})
+
+// Watch for model changes and update default
+watch(
+  selectedAIModel,
+  (newVal) => {
+    // Get the most recently selected model (last non-empty value)
+    const allModels = Object.values(newVal).filter(Boolean)
+    if (allModels.length > 0) {
+      const lastSelected = allModels[allModels.length - 1]
+      if (lastSelected && lastSelected !== defaultAIModel.value) {
+        defaultAIModel.value = lastSelected
+        localStorage.setItem('defaultAIModel', lastSelected)
+      }
+    }
+  },
+  { deep: true }
+)
+
+// AI Model Options
+const aiModelOptions = [
+  { label: '🔵 GPT-4o (OpenAI) - Balanced & Fast', value: 'gpt-4o' },
+  { label: '⚡ GPT-4o-mini (OpenAI) - Fast & Cheap', value: 'gpt-4o-mini' },
+  { label: '🧠 GPT-5 (OpenAI o1) - Deep Reasoning ⚠️ EXPENSIVE', value: 'gpt-5' },
+  { label: '🧠 GPT-5 Mini (OpenAI o1) - Faster Reasoning', value: 'gpt-5-mini' },
+  { label: '🟣 Claude Sonnet 3.7 + Extended Thinking', value: 'claude-sonnet-3-7' },
+  { label: '🟣 Claude Sonnet 4 + Extended Thinking', value: 'claude-sonnet-4' },
+  { label: '🟣 Claude Sonnet 4.5 + Extended Thinking', value: 'claude-sonnet-4-5' },
+  { label: '🟣 Claude Haiku 4.5 + Extended Thinking', value: 'claude-haiku-4-5' },
+  { label: '🟣 Claude Opus 4 + Extended Thinking', value: 'claude-opus-4' },
+  { label: '🟣 Claude Opus 4.1 + Extended Thinking', value: 'claude-opus-4-1' },
+  { label: '🟣 Claude Opus 4.5 + Extended Thinking', value: 'claude-opus-4-5' },
+  { label: '🟣 Claude 3.5 Sonnet (Classic)', value: 'claude-3-5-sonnet-20241022' },
+  { label: '🟣 Claude 3.5 Haiku (Fast)', value: 'claude-3-5-haiku-20241022' },
+  { label: '🔴 Gemini 1.5 Pro - 2M Context!', value: 'gemini-1.5-pro' },
+  { label: '⚡ Gemini 1.5 Flash - Cheapest!', value: 'gemini-1.5-flash' }
+]
+
+const getModelDescription = (modelId: string | undefined) => {
+  const descriptions: Record<string, string> = {
+    'gpt-4o': '💰 $2.50/$10 per 1M tokens • 128K context • Balanced',
+    'gpt-4o-mini': '💰 $0.15/$0.60 per 1M tokens • Fast & cheap',
+    'gpt-5': '⚠️ $30/$30 per 1M tokens • Deep reasoning • 10x more expensive!',
+    'gpt-5-mini': '⚠️ $15/$15 per 1M tokens • Faster reasoning • 5x expensive',
+    'claude-sonnet-3-7': '💰 $3/$15 per 1M tokens • Extended Thinking',
+    'claude-sonnet-4': '💰 $3/$15 per 1M tokens • Advanced thinking',
+    'claude-sonnet-4-5': '💰 $3/$15 per 1M tokens • Best coding + thinking',
+    'claude-haiku-4-5': '💰 $1/$5 per 1M tokens • Fast thinking',
+    'claude-opus-4': '💰 $15/$75 per 1M tokens • Max intelligence',
+    'claude-opus-4-1': '💰 $15/$75 per 1M tokens • Enhanced Opus',
+    'claude-opus-4-5': '💰 $15/$75 per 1M tokens • Latest Opus',
+    'claude-3-5-sonnet-20241022': '💰 $3/$15 per 1M tokens • Classic',
+    'claude-3-5-haiku-20241022': '💰 $0.80/$4 per 1M tokens • Fast',
+    'gemini-1.5-pro': '💰 $1.25/$5 per 1M tokens • 2M context!',
+    'gemini-1.5-flash': '💰 $0.075/$0.30 per 1M tokens • Cheapest!'
+  }
+  return descriptions[modelId || 'gpt-4o'] || 'Select a model'
+}
+
+// Assignment helpers
+const assignmentOptions = computed(() => teamMembers.value.map(m => ({ label: `${m.email} (${m.role})`, key: m.id })))
+const assignmentLabel = (disclosureId: number) => {
+  const assignedId = disclosureAssignments.value[disclosureId]
+  const member = teamMembers.value.find(m => m.id === assignedId)
+  return member ? member.email : 'Unassigned'
+}
+const isAssignedToOther = (disclosureId: number) => {
+  const assignedId = disclosureAssignments.value[disclosureId]
+  return assignedId != null && currentUserId.value != null && assignedId !== currentUserId.value
+}
+const isAssignedToMe = (disclosureId: number) => {
+  const assignedId = disclosureAssignments.value[disclosureId]
+  return assignedId != null && currentUserId.value != null && assignedId === currentUserId.value
+}
+
+// Can edit disclosure: admin/owner can edit unassigned or their own, members only their assigned
+const canEditDisclosure = (disclosureId: number) => {
+  // Admin/Owner can always edit
+  if (isAdmin.value) return true
+  
+  // Check if disclosure is assigned to anyone
+  const assignedId = disclosureAssignments.value[disclosureId]
+  
+  // If not assigned to anyone, owner can edit (isAdmin covers this above)
+  // Members can only edit if assigned to them
+  if (assignedId == null) return false  // Unassigned - only admin/owner
+  
+  return isAssignedToMe(disclosureId)
+}
+
+// Should show disclosure for non-admin users (only assigned ones)
+const shouldShowDisclosure = (disclosureId: number) => {
+  if (isAdmin.value) return true
+  // Non-admins see all disclosures but can only edit assigned ones
+  return true
+}
+
 // Modal states
 const showNotesModal = ref(false)
+const currentTableIndex = ref<number>(0)
 const showUploadModal = ref(false)
 const showManualAnswerModal = ref(false)
 const showFinalAnswerModal = ref(false)
@@ -1569,6 +1803,17 @@ const loadUserDocuments = async () => {
     console.error('❌ Load documents failed:', error)
   } finally {
     loadingDocuments.value = false
+  }
+}
+
+const loadCurrentUser = async () => {
+  try {
+    const response = await api.get('/auth/me')
+    currentUserId.value = response.data?.id ?? null
+    isAdmin.value = response.data?.is_staff || response.data?.is_organization_owner || false
+    localStorage.setItem('userEmail', response.data?.email || '')
+  } catch (error) {
+    console.error('Failed to load current user:', error)
   }
 }
 
@@ -1700,6 +1945,12 @@ const loadDisclosureData = async (disclosures: ESRSDisclosure[]) => {
         disclosureResponses.value[disclosure.id] = response.data
         // Update temperature from response
         aiTemperatures.value[disclosure.id] = response.data.ai_temperature ?? 0.2
+        // Initialize assignment from response
+        if (response.data.assigned_to) {
+          disclosureAssignments.value[disclosure.id] = response.data.assigned_to
+        }
+        const storedModel = localStorage.getItem(`ai-model-${disclosure.id}`)
+        selectedAIModel.value[disclosure.id] = response.data.ai_model || storedModel || selectedAIModel.value[disclosure.id] || defaultAIModel.value
       }
     } catch (error) {
       // Ignore
@@ -2266,7 +2517,8 @@ const getAIAnswer = async (disclosure: ESRSDisclosure) => {
   try {
     const response = await api.post('/esrs/ai-answer', {
       disclosure_id: disclosure.id,
-      ai_temperature: aiTemperatures.value[disclosure.id] ?? 0.2
+      ai_temperature: aiTemperatures.value[disclosure.id] ?? 0.2,
+      ai_model: selectedAIModel.value[disclosure.id] || defaultAIModel.value
     })
     
     if (response.data.task_id) {
@@ -2527,17 +2779,64 @@ const copyToClipboard = async (text: string) => {
   }
 }
 
+// Fetch team members for assignment dropdown
+const fetchTeamMembers = async () => {
+  try {
+    const response = await api.get('/team/members')
+    teamMembers.value = response.data
+  } catch (error) {
+    console.error('Failed to fetch team members:', error)
+  }
+}
+
+// Assign disclosure to team member
+const assignDisclosure = async (disclosureId: number, assignedToId: number | null) => {
+  try {
+    await api.post('/esrs/assign-disclosure', {
+      disclosure_id: disclosureId,
+      assigned_to_id: assignedToId
+    })
+    disclosureAssignments.value[disclosureId] = assignedToId
+    message.success(assignedToId ? 'Disclosure assigned successfully' : 'Disclosure unassigned')
+  } catch (error) {
+    message.error('Failed to assign disclosure')
+    console.error('Assignment error:', error)
+  }
+}
+
+const handleAssignDisclosure = async (disclosureId: number, assignedToId: number | null) => {
+  assigning.value[disclosureId] = true
+  await assignDisclosure(disclosureId, assignedToId)
+  
+  // Reload disclosure data to update UI with assignment status
+  try {
+    const response = await api.get(`/esrs/notes/${disclosureId}`)
+    if (response.data.id !== 0) {
+      disclosureResponses.value[disclosureId] = response.data
+      if (response.data.assigned_to) {
+        disclosureAssignments.value[disclosureId] = response.data.assigned_to
+      } else {
+        delete disclosureAssignments.value[disclosureId]
+      }
+    }
+  } catch (error) {
+    console.error('Failed to reload disclosure data:', error)
+  }
+  
+  assigning.value[disclosureId] = false
+}
+
 onMounted(async () => {
-  await Promise.all([loadCategories(), loadStandards()])
+  await Promise.all([loadCategories(), loadStandards(), fetchTeamMembers(), loadCurrentUser()])
   
   // Check if category query parameter exists and auto-select first standard
   const categoryId = route.query.category
   if (categoryId) {
     const catId = parseInt(categoryId as string)
-    const categoryStandards = standards.value.filter(s => s.category === catId)
+    const categoryStandards = standards.value.filter(s => s.category.id === catId)
     if (categoryStandards.length > 0) {
       // Auto-select first standard in the category
-      handleStandardSelect(categoryStandards[0].id)
+      handleStandardSelect(categoryStandards[0].id.toString())
     }
   }
 })
@@ -2603,6 +2902,16 @@ onBeforeUnmount(() => {
 .disclosure-item {
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
+}
+
+.assigned-other {
+  background: rgba(255, 99, 71, 0.08) !important;
+  border-left: 3px solid rgba(255, 99, 71, 0.6) !important;
+}
+
+.assigned-me {
+  background: rgba(84, 217, 68, 0.08) !important;
+  border-left: 3px solid rgba(84, 217, 68, 0.6) !important;
 }
 
 .disclosure-item:target {

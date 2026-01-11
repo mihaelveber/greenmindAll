@@ -105,7 +105,7 @@
                 <n-text strong>{{ t('admin.userDetails.refinementsByType') }}</n-text>
                 <n-grid x-gap="12" y-gap="12" cols="2 s:4" responsive="screen">
                   <n-grid-item v-for="(count, type) in userAiUsage.refinements_by_type" :key="type">
-                    <n-statistic :label="type" :value="count" />
+                    <n-statistic :label="type" :value="String(count)" />
                   </n-grid-item>
                 </n-grid>
               </n-space>
@@ -138,7 +138,7 @@
                 <n-text strong>{{ t('admin.userDetails.versionsByType') }}</n-text>
                 <n-grid x-gap="12" y-gap="12" cols="2 s:4" responsive="screen">
                   <n-grid-item v-for="(count, type) in userVersionStats.by_item_type" :key="type">
-                    <n-statistic :label="type" :value="count" />
+                    <n-statistic :label="type" :value="String(count)" />
                   </n-grid-item>
                 </n-grid>
 
@@ -147,7 +147,7 @@
                 <n-text strong>{{ t('admin.userDetails.versionsByChangeType') }}</n-text>
                 <n-grid x-gap="12" y-gap="12" cols="2 s:3" responsive="screen">
                   <n-grid-item v-for="(count, type) in userVersionStats.by_change_type" :key="type">
-                    <n-statistic :label="type" :value="count" />
+                    <n-statistic :label="type" :value="String(count)" />
                   </n-grid-item>
                 </n-grid>
               </n-space>

@@ -31,9 +31,10 @@ services:
       retries: 5
   backend:
     build: ./backend
-    command: "sh -c \"python manage.py migrate &&\n       python manage.py create_test_user\
-      \ &&\n       gunicorn config.wsgi:application --bind 0.0.0.0:8090 --workers\
-      \ 4\"\n"
+    command: >
+      sh -c "python manage.py migrate &&
+             python manage.py create_test_user &&
+             gunicorn config.asgi:application --bind 0.0.0.0:8090 --workers 4 --worker-class uvicorn.workers.UvicornWorker"
     ports:
     - 8090:8090
     environment:
@@ -111,6 +112,16 @@ services:
     - VITE_API_URL=http://localhost:8090/api
     volumes:
     - ./frontend:/app
+    - /app/node_modules
+    command: npm run dev -- --host 0.0.0.0
+  admin:
+    build: ./admin
+    ports:
+    - 5174:5174
+    environment:
+    - VITE_API_URL=http://localhost:8090/api
+    volumes:
+    - ./admin:/app
     - /app/node_modules
     command: npm run dev -- --host 0.0.0.0
 volumes:

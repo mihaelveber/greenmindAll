@@ -96,21 +96,24 @@ def extract_text_from_excel(file_path: str) -> str:
         for sheet_name in excel_file.sheet_names:
             df = pd.read_excel(file_path, sheet_name=sheet_name)
             
-            # Convert DataFrame to text
-            sheet_text = f"=== Sheet: {sheet_name} ===\n\n"
+            # Convert DataFrame to text with better table preservation
+            sheet_text = f"\n\n{'='*80}\n=== SHEET: {sheet_name} ===\n{'='*80}\n\n"
             
-            # Add column headers
+            # Add column headers with clear separator
             headers = ' | '.join(str(col) for col in df.columns)
-            sheet_text += headers + '\n' + '-' * len(headers) + '\n'
+            sheet_text += headers + '\n' + '-' * min(len(headers), 120) + '\n'
             
-            # Add rows (limit to avoid too much data)
+            # Add rows (limit to avoid too much data) with clear row separation
             max_rows = 1000
             for idx, row in df.head(max_rows).iterrows():
                 row_text = ' | '.join(str(val) if pd.notna(val) else '' for val in row.values)
                 sheet_text += row_text + '\n'
             
             if len(df) > max_rows:
-                sheet_text += f'\n[... {len(df) - max_rows} more rows truncated ...]'
+                sheet_text += f'\n[... {len(df) - max_rows} more rows truncated ...]\n'
+            
+            # Add end marker to preserve sheet boundaries
+            sheet_text += f"\n{'='*80}\n=== END OF SHEET: {sheet_name} ===\n{'='*80}\n\n"
             
             text_content.append(sheet_text)
         
@@ -203,8 +206,10 @@ def parse_document(file_path: str, file_name: str) -> Tuple[str, str]:
         ValueError: If file format is not supported
         Exception: If extraction fails
     """
-    # Get file extension
-    file_ext = file_name.lower().split('.')[-1] if '.' in file_name else ''
+    # Get file extension using os.path.splitext to handle complex filenames
+    import os
+    _, file_ext = os.path.splitext(file_name.lower())
+    file_ext = file_ext.lstrip('.')  # Remove leading dot
     
     # Check if format is supported
     if file_ext not in SUPPORTED_FORMATS:

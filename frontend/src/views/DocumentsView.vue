@@ -109,7 +109,7 @@
               </template>
               Update URL
             </n-button>
-            <n-button text type="info" @click="previewDocument(websiteDoc)">
+            <n-button text type="info" @click="openPreview(websiteDoc)">
               <template #icon>
                 <n-icon :component="EyeOutline" />
               </template>
@@ -156,7 +156,7 @@
                   </n-tag>
                   
                   <!-- Linked Questions Count (if not global) -->
-                  <n-tooltip v-if="!doc.is_global && doc.linked_disclosure_codes?.length > 0" trigger="hover">
+                  <n-tooltip v-if="!doc.is_global && (doc.linked_disclosure_codes?.length ?? 0) > 0" trigger="hover">
                     <template #trigger>
                       <n-tag 
                         size="small" 
@@ -169,7 +169,7 @@
                     </template>
                     <div style="max-width: 400px;">
                       <strong>Linked to questions:</strong><br/>
-                      {{ doc.linked_disclosure_codes.join(', ') }}
+                      {{ doc.linked_disclosure_codes?.join(', ') ?? '' }}
                     </div>
                   </n-tooltip>
                   
@@ -214,7 +214,7 @@
                 <n-button
                   text
                   type="info"
-                  @click="previewDocument(doc)"
+                  @click="openPreview(doc)"
                 >
                   <template #icon>
                     <n-icon :component="EyeOutline" />
@@ -264,6 +264,33 @@
       :style="{ width: '600px' }"
       :bordered="false"
     >
+      <!-- Global/Question-Specific Toggle -->
+      <n-space vertical :size="16" style="margin-bottom: 16px;">
+        <n-alert type="info" :show-icon="false">
+          <template #header>
+            <n-space align="center">
+              <n-icon :component="InformationCircleOutline" size="20" />
+              <span style="font-weight: 600;">Document Scope</span>
+            </n-space>
+          </template>
+          <n-checkbox v-model:checked="isGlobalUpload" size="large">
+            <template #default>
+              <span style="font-size: 14px; font-weight: 500;">
+                🌍 Make this document <strong>GLOBAL</strong> (available for all disclosures)
+              </span>
+            </template>
+          </n-checkbox>
+          <n-text depth="3" style="font-size: 12px; margin-top: 8px; display: block;">
+            <span v-if="isGlobalUpload">
+              ✅ This document will be available to answer <strong>ALL</strong> questions
+            </span>
+            <span v-else>
+              ⚠️ This document will be <strong>question-specific</strong> - you'll need to manually link it to specific disclosures
+            </span>
+          </n-text>
+        </n-alert>
+      </n-space>
+      
       <n-upload
         multiple
         :max="10"
@@ -337,6 +364,78 @@
       <template #footer>
         <n-space justify="end">
           <n-button @click="showViewModal = false">Close</n-button>
+        </n-space>
+      </template>
+    </n-modal>
+
+    <!-- Document Preview Modal -->
+    <n-modal
+      v-model:show="showPreviewModal"
+      preset="card"
+      :title="`📄 ${previewDocument?.file_name || 'Document Preview'}`"
+      :style="{ width: '95vw', height: '95vh' }"
+      :bordered="false"
+    >
+      <div style="height: calc(95vh - 120px); overflow: hidden;">
+        <!-- Office viewer for DOCX/XLSX/PPTX (uses public embed endpoint). Falls back below if not accessible. -->
+        <iframe
+          v-if="previewDocument && (
+            previewDocument.file_type.includes('word') ||
+            previewDocument.file_type.includes('document') ||
+            previewDocument.file_type.includes('spreadsheet') ||
+            previewDocument.file_type.includes('sheet') ||
+            previewDocument.file_type.includes('presentation')
+          )"
+          :src="`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(previewUrl)}`"
+          width="100%"
+          height="100%"
+          style="border: none;"
+          allowfullscreen
+        />
+        
+        <!-- Direct PDF/Image embed for browsers that support it -->
+        <embed
+          v-else-if="previewDocument && (
+            previewDocument.file_type.includes('pdf') ||
+            previewDocument.file_type.includes('image')
+          )"
+          :src="previewUrl"
+          width="100%"
+          height="100%"
+          style="border: none;"
+        />
+        
+        <!-- Fallback for other formats -->
+        <div v-else style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 24px;">
+          <n-icon :component="DocumentTextOutline" size="80" color="#54d944" />
+          <n-text style="font-size: 18px;">Preview not available for this file type</n-text>
+          <n-text depth="3">File type: {{ previewDocument?.file_type }}</n-text>
+          <n-button type="primary" @click="openInNewTab()">
+            Open in New Tab
+          </n-button>
+          <n-button @click="downloadDocument(previewDocument!)">
+            <template #icon>
+              <n-icon :component="DownloadOutline" />
+            </template>
+            Download File
+          </n-button>
+        </div>
+      </div>
+
+      <template #footer>
+        <n-space justify="space-between">
+          <n-text depth="3">
+            {{ previewDocument?.file_type }} • {{ formatFileSize(previewDocument?.file_size || 0) }}
+          </n-text>
+          <n-space>
+            <n-button @click="downloadDocument(previewDocument!)">
+              <template #icon>
+                <n-icon :component="DownloadOutline" />
+              </template>
+              Download
+            </n-button>
+            <n-button @click="showPreviewModal = false">Close</n-button>
+          </n-space>
         </n-space>
       </template>
     </n-modal>
@@ -462,6 +561,7 @@ import {
   NInput,
   NFormItem,
   NTooltip,
+  NCheckbox,
   type UploadFileInfo,
   type UploadCustomRequestOptions
 } from 'naive-ui'
@@ -476,6 +576,7 @@ import {
   FileTrayFullOutline,
   DownloadOutline,
   ArrowBackOutline,
+  InformationCircleOutline,
   GlobeOutline,
   CreateOutline
 } from '@vicons/ionicons5'
@@ -498,8 +599,19 @@ const loading = ref(false)
 const documents = ref<Document[]>([])
 const showUploadModal = ref(false)
 const showViewModal = ref(false)
+const showPreviewModal = ref(false)
 const uploadFileList = ref<UploadFileInfo[]>([])
 const selectedDocument = ref<Document | null>(null)
+const previewDocument = ref<Document | null>(null)
+const previewUrl = ref('')
+const isGlobalUpload = ref(true)  // Default to global documents
+
+// Helper function to open URL in new tab
+const openInNewTab = () => {
+  if (previewUrl.value) {
+    window.open(previewUrl.value, '_blank')
+  }
+}
 
 // Website documents
 const websiteUrl = ref<string>('')
@@ -563,7 +675,7 @@ const extractUrlFromFilename = (filename: string) => {
 }
 
 const openEditWebsiteModal = (doc: Document) => {
-  editingWebsiteUrl.value = extractUrlFromFilename(doc.file_name)
+  editingWebsiteUrl.value = extractUrlFromFilename(doc.file_name) || ''
   editingDocumentId.value = doc.id
   showEditWebsiteModal.value = true
 }
@@ -633,6 +745,7 @@ const handleUpload = async (options: UploadCustomRequestOptions) => {
   try {
     const formData = new FormData()
     formData.append('file', file.file as File)
+    formData.append('is_global', isGlobalUpload.value ? 'true' : 'false')
 
     await api.post('/documents/upload', formData, {
       headers: {
@@ -640,7 +753,7 @@ const handleUpload = async (options: UploadCustomRequestOptions) => {
       },
     })
 
-    message.success(`${file.name} uploaded successfully`)
+    message.success(`${file.name} uploaded successfully as ${isGlobalUpload.value ? 'GLOBAL' : 'Question-Specific'}`)
     onFinish()
     
     // Reload documents list
@@ -674,13 +787,11 @@ const toggleGlobalStatus = async (doc: Document) => {
   }
 }
 
-const previewDocument = (doc: Document) => {
-  // Odpri dokument v novem browser tabu - browser bo odločil ali lahko prikaže ali ne
+const openPreview = (doc: Document) => {
   const token = localStorage.getItem('access_token')
-  const url = `http://localhost:8090/api/documents/download/${doc.id}?token=${token}`
-  
-  window.open(url, '_blank')
-  message.info(`Opening ${doc.file_name}...`)
+  previewUrl.value = `http://localhost:8090/api/documents/download/${doc.id}?token=${token}`
+  previewDocument.value = doc
+  showPreviewModal.value = true
 }
 
 const downloadDocument = (doc: Document) => {

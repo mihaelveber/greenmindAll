@@ -18,4 +18,4 @@ COPY . .
 
 EXPOSE 8090
 
-CMD ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:8090", "--workers", "4", "--worker-class", "uvicorn.workers.UvicornWorker"]
+CMD ["gunicorn", "config.asgi:application", "--bind", "0.0.0.0:8090", "--workers", "4", "--worker-class", "uvicorn.workers.UvicornWorker"]

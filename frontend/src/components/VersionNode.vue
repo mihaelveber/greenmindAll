@@ -35,6 +35,18 @@
           </n-space>
         </div>
         
+        <!-- User Attribution -->
+        <div class="version-attribution" style="margin-top: 4px;">
+          <n-text depth="3" style="font-size: 11px;">
+            <span v-if="version.created_by_user">
+              👤 Created by: <strong>{{ version.created_by_email || 'Unknown user' }}</strong>
+            </span>
+            <span v-else>
+              🤖 AI Generated
+            </span>
+          </n-text>
+        </div>
+        
         <n-text v-if="version.change_description" class="version-description">
           {{ version.change_description }}
         </n-text>
@@ -96,7 +108,7 @@
           :key="child.id"
           :version="child"
           :selected-version-id="selectedVersionId"
-          :children="getChildrenOf(child.id)"
+          :all-versions="allVersions"
           @select="$emit('select', $event)"
           @view="$emit('view', $event)"
           @delete="$emit('delete', $event)"
@@ -127,6 +139,7 @@ interface Version {
   is_selected: boolean
   created_at: string
   created_by_user: boolean
+  created_by_email?: string
   parent_version_id: string | null
   conversation_id: string | null
 }
@@ -134,7 +147,7 @@ interface Version {
 interface Props {
   version: Version
   selectedVersionId: string | null
-  children: Version[]
+  allVersions: Version[]
 }
 
 const props = defineProps<Props>()
@@ -145,8 +158,12 @@ defineEmits<{
   (e: 'delete', versionId: string): void
 }>()
 
+const children = computed(() => {
+  return props.allVersions.filter(v => v.parent_version_id === props.version.id)
+})
+
 const getChildrenOf = (parentId: string): Version[] => {
-  return props.children.filter(c => c.parent_version_id === parentId)
+  return props.allVersions.filter(c => c.parent_version_id === parentId)
 }
 
 const getChangeTypeLabel = (type: string): string => {

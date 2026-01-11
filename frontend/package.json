@@ -19,6 +19,7 @@
     "@vueuse/core": "^14.1.0",
     "axios": "^1.13.2",
     "chart.js": "^4.5.1",
+    "echarts": "^6.0.0",
     "marked": "^15.0.12",
     "naive-ui": "^2.43.2",
     "pinia": "^3.0.4",

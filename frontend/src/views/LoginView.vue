@@ -31,8 +31,9 @@
               <n-input
                 v-model:value="loginForm.email"
                 placeholder="vnesite@email.com"
-                autocomplete="email"
-                :input-props="{ autocomplete: 'email' }"
+                autocomplete="username email"
+                name="email"
+                :input-props="{ autocomplete: 'username email', name: 'email', id: 'login-email' }"
               >
                 <template #prefix>
                   <n-icon :component="MailOutline" />
@@ -47,7 +48,8 @@
                 show-password-on="click"
                 placeholder="Vnesite geslo"
                 autocomplete="current-password"
-                :input-props="{ autocomplete: 'current-password' }"
+                name="password"
+                :input-props="{ autocomplete: 'current-password', name: 'password', id: 'login-password' }"
               >
                 <template #prefix>
                   <n-icon :component="LockClosedOutline" />

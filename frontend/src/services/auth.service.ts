@@ -20,6 +20,8 @@ export interface User {
   oauth_provider?: string
   wizard_completed?: boolean
   company_type?: string
+  is_staff?: boolean
+  is_organization_owner?: boolean
 }
 
 export interface AuthResponse {

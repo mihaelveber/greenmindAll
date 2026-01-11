@@ -1,11 +1,15 @@
 import jwt
+import os
 from datetime import datetime, timedelta
 from typing import Optional
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from ninja.security import HttpBearer
+from ninja.security import HttpBearer, APIKeyHeader
 
 User = get_user_model()
+
+# Admin API key for admin panel (set in environment)
+ADMIN_API_KEY = os.environ.get('ADMIN_API_KEY', 'greenmind-admin-secret-key-2024')
 
 class JWTAuth(HttpBearer):
     async def authenticate(self, request, token):
@@ -23,6 +27,15 @@ class JWTAuth(HttpBearer):
             return user
         except (jwt.DecodeError, jwt.ExpiredSignatureError, User.DoesNotExist):
             return None
+
+class AdminAuth(APIKeyHeader):
+    """Admin authentication using API key in X-Admin-Key header"""
+    param_name = "X-Admin-Key"
+    
+    def authenticate(self, request, key):
+        if key == ADMIN_API_KEY:
+            return {"admin": True}
+        return None
 
 def create_access_token(user_id: int) -> str:
     """Ustvari JWT access token"""

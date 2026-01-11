@@ -67,9 +67,15 @@
                     <div v-for="task in activeTasks" :key="task.task_id" class="task-item">
                       <n-space justify="space-between" align="center">
                         <n-space vertical :size="4" style="flex: 1;">
-                          <n-text strong>{{ task.task_type === 'bulk' ? `Bulk: ${task.standard_code}` : `Single: ${task.disclosure_code}` }}</n-text>
+                          <n-text strong>{{ 
+                            task.task_type === 'bulk' ? `Bulk: ${task.standard_code}` : 
+                            task.task_type === 'rag_processing' ? `📄 ${task.document_name || 'Document Processing'}` :
+                            `Single: ${task.disclosure_code}` 
+                          }}</n-text>
                           <n-text depth="3" style="font-size: 12px;">
-                            {{ task.status === 'pending' ? 'Waiting to start...' : `Processing ${task.completed_items}/${task.total_items}` }}
+                            {{ task.status === 'pending' ? 'Waiting to start...' : 
+                               task.task_type === 'rag_processing' ? 'Processing document...' :
+                               `Processing ${task.completed_items}/${task.total_items}` }}
                           </n-text>
                         </n-space>
                         <n-tag :type="task.status === 'running' ? 'info' : 'default'" size="small">
@@ -167,10 +173,15 @@
 
     <!-- Settings Modal -->
     <n-modal v-model:show="showSettingsModal" preset="card" title="⚙️ Settings" style="width: 600px;">
-      <n-alert type="info" style="margin-bottom: 16px;">
-        Dark theme is enabled by default for optimal visibility.
-      </n-alert>
-      <n-form label-placement="left" label-width="120px">
+      <n-form label-placement="left" label-width="120px;">
+        <n-form-item label="Theme">
+          <n-select
+            v-model:value="selectedTheme"
+            :options="themeOptions"
+            placeholder="Select theme"
+          />
+        </n-form-item>
+        
         <n-form-item label="Language">
           <n-select
             v-model:value="selectedLanguage"
@@ -213,6 +224,75 @@
               <n-text strong style="font-size: 16px;">{{ userNickname }}</n-text>
               <n-text depth="3" style="font-size: 12px;">{{ languageOptions.find(l => l.value === selectedLanguage)?.label }}</n-text>
             </n-space>
+          </n-space>
+        </n-form-item>
+
+        <!-- RAG TIER Settings -->
+        <n-divider title-placement="left">🚀 AI RAG Configuration</n-divider>
+        
+        <n-alert type="info" style="margin-bottom: 16px;">
+          Configure when TIER 1, TIER 2, or TIER 3 RAG enhancements are used based on confidence thresholds.
+        </n-alert>
+
+        <n-form-item>
+          <n-space vertical style="width: 100%;">
+            <n-space align="center" style="width: 100%; justify-content: space-between;">
+              <n-text strong>TIER 1</n-text>
+              <n-switch v-model:value="ragSettings.tier1_enabled">
+                <template #checked>Enabled</template>
+                <template #unchecked>Disabled</template>
+              </n-switch>
+            </n-space>
+            <n-text depth="3" style="font-size: 12px;">
+              Hybrid BM25 + Embeddings search (60% semantic + 40% keyword)
+            </n-text>
+          </n-space>
+        </n-form-item>
+
+        <n-form-item>
+          <n-space vertical style="width: 100%;">
+            <n-text strong>TIER 2 Threshold</n-text>
+            <n-slider
+              v-model:value="ragSettings.tier2_threshold"
+              :min="0"
+              :max="100"
+              :step="5"
+              :marks="{ 0: '0%', 40: '40%', 60: '60%', 80: '80%', 100: '100%' }"
+            />
+            <n-text depth="3" style="font-size: 12px;">
+              Use Multi-Query + Document Expansion when confidence &lt; {{ ragSettings.tier2_threshold }}%
+            </n-text>
+          </n-space>
+        </n-form-item>
+
+        <n-form-item>
+          <n-space vertical style="width: 100%;">
+            <n-space align="center" style="width: 100%; justify-content: space-between;">
+              <n-text strong>TIER 3</n-text>
+              <n-switch v-model:value="ragSettings.tier3_enabled">
+                <template #checked>Enabled</template>
+                <template #unchecked>Disabled</template>
+              </n-switch>
+            </n-space>
+            <n-text depth="3" style="font-size: 12px;">
+              LLM Self-Reflection + Query Reformulation + Reranking
+            </n-text>
+          </n-space>
+        </n-form-item>
+
+        <n-form-item>
+          <n-space vertical style="width: 100%;">
+            <n-text strong>TIER 3 Threshold</n-text>
+            <n-slider
+              v-model:value="ragSettings.tier3_threshold"
+              :min="0"
+              :max="100"
+              :step="5"
+              :marks="{ 0: '0%', 25: '25%', 50: '50%', 75: '75%', 100: '100%' }"
+            />
+            <n-text depth="3" style="font-size: 12px;">
+              Use Contextual Retrieval + Reranking when confidence &lt; {{ ragSettings.tier3_threshold }}%
+            </n-text>
           </n-space>
         </n-form-item>
       </n-form>
@@ -318,6 +398,7 @@ interface AITask {
   completed_items: number
   disclosure_code?: string
   standard_code?: string
+  document_name?: string
   created_at: string
   updated_at: string
 }
@@ -332,6 +413,21 @@ const showSettingsModal = ref(false)
 const userNickname = ref(authStore.user?.username || '')
 const selectedAvatar = ref(localStorage.getItem('userAvatar') || 'default')
 const selectedLanguage = ref(localStorage.getItem('locale') || 'en')
+const selectedTheme = ref<'greenmind' | 'dark' | 'light'>(localStorage.getItem('theme') as any || 'greenmind')
+
+const themeOptions = [
+  { label: '🌿 GreenMind', value: 'greenmind' },
+  { label: '🌙 Dark Mode', value: 'dark' },
+  { label: '☀️ Light Mode', value: 'light' }
+]
+
+// RAG TIER Settings
+const ragSettings = ref({
+  tier1_enabled: true,
+  tier2_threshold: 60,
+  tier3_enabled: false,
+  tier3_threshold: 40
+})
 
 const avatarOptions = [
   { label: '👤 Default', value: 'default' },
@@ -371,12 +467,21 @@ const menuOptions = computed(() => {
   console.log('🎯 Menu - standardTypes:', standardTypes.value.length, 'items')
   console.log('🎯 Menu - generated:', standardMenus.length, 'standard menus')
   
+  // Check if user can manage team (admin or organization owner)
+  const canManageTeam = authStore.user?.is_staff || authStore.user?.is_organization_owner
+  
   const otherMenus = [
     {
       label: t('nav.documents'),
       key: 'documents',
       icon: () => h(NIcon, null, { default: () => h(DocumentTextOutline) })
     },
+    // Only show Team Management for admins and organization owners
+    ...(canManageTeam ? [{
+      label: '👥 Team Management',
+      key: 'team',
+      icon: () => h(NIcon, null, { default: () => h(PersonOutline) })
+    }] : []),
     {
       label: t('nav.profile'),
       key: 'profile',
@@ -419,6 +524,9 @@ const handleMenuUpdate = (key: string) => {
     activeKey.value = key
     const standardType = key.replace('standard-', '')
     router.push(`/standards/${standardType}`)
+  } else if (key === 'team') {
+    activeKey.value = 'team'
+    router.push('/team')
   } else if (key === 'esrs') {
     // Legacy support - redirect to ESRS standard
     activeKey.value = 'standard-ESRS'
@@ -448,21 +556,35 @@ const handleUserAction = async (key: string) => {
 }
 
 const saveSettings = async () => {
-  // Theme is always dark (no toggle)
-  
-  // Save avatar
-  localStorage.setItem('userAvatar', selectedAvatar.value)
-  
-  // Save and change language
-  const { locale } = useI18n()
-  localStorage.setItem('locale', selectedLanguage.value)
-  locale.value = selectedLanguage.value
-  
-  showSettingsModal.value = false
-  message.success('Settings saved successfully!')
-  
-  // Reload page to apply language changes
-  window.location.reload()
+  try {
+    // Save theme
+    localStorage.setItem('theme', selectedTheme.value)
+    
+    // Save avatar
+    localStorage.setItem('userAvatar', selectedAvatar.value)
+    
+    // Save and change language
+    const { locale } = useI18n()
+    localStorage.setItem('locale', selectedLanguage.value)
+    locale.value = selectedLanguage.value
+    
+    // Save RAG TIER settings to backend
+    await api.post('/auth/update-rag-settings', {
+      rag_tier1_enabled: ragSettings.value.tier1_enabled,
+      rag_tier2_threshold: ragSettings.value.tier2_threshold,
+      rag_tier3_enabled: ragSettings.value.tier3_enabled,
+      rag_tier3_threshold: ragSettings.value.tier3_threshold
+    })
+    
+    showSettingsModal.value = false
+    message.success('Settings saved successfully!')
+    
+    // Reload page to apply language changes
+    window.location.reload()
+  } catch (error: any) {
+    console.error('Error saving RAG settings:', error)
+    message.error('Failed to save RAG settings')
+  }
 }
 
 const getAvatarEmoji = (avatarValue: string) => {
@@ -649,6 +771,21 @@ const exportWord = async () => {
 onMounted(async () => {
   if (!authStore.user) {
     await authStore.fetchCurrentUser()
+  }
+  
+  // Load RAG TIER settings
+  try {
+    const response = await api.get('/auth/rag-settings')
+    if (response.data) {
+      ragSettings.value = {
+        tier1_enabled: response.data.rag_tier1_enabled ?? true,
+        tier2_threshold: response.data.rag_tier2_threshold ?? 60,
+        tier3_enabled: response.data.rag_tier3_enabled ?? false,
+        tier3_threshold: response.data.rag_tier3_threshold ?? 40
+      }
+    }
+  } catch (error) {
+    console.error('Error loading RAG settings:', error)
   }
   
   // Initialize theme

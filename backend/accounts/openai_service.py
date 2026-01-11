@@ -4,7 +4,7 @@ Handles file uploads, vector store management, and file_search tool integration
 """
 import os
 import logging
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List, Dict, Any
 from django.conf import settings
 import openai
 
@@ -16,6 +16,49 @@ class OpenAIService:
     
     def __init__(self):
         self.client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
+    
+    def generate(self, model: str, messages: List[Dict[str, str]], temperature: float = 0.2, max_tokens: int = 4096, **kwargs) -> Dict[str, Any]:
+        """
+        Generate completion using OpenAI
+        
+        Args:
+            model: Model identifier (gpt-4o, gpt-4o-mini, etc.)
+            messages: List of message dicts with 'role' and 'content'
+            temperature: Randomness (0-1)
+            max_tokens: Maximum tokens to generate
+            **kwargs: Additional parameters
+            
+        Returns:
+            Dict with 'message' and 'usage' keys
+        """
+        try:
+            response = self.client.chat.completions.create(
+                model=model,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                **kwargs
+            )
+            
+            result = {
+                'message': {
+                    'role': response.choices[0].message.role,
+                    'content': response.choices[0].message.content
+                },
+                'usage': {
+                    'prompt_tokens': response.usage.prompt_tokens,
+                    'completion_tokens': response.usage.completion_tokens,
+                    'total_tokens': response.usage.total_tokens
+                },
+                'model': response.model,
+                'provider': 'openai'
+            }
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"OpenAI API error: {e}", exc_info=True)
+            raise Exception(f"OpenAI API error: {str(e)}")
     
     def upload_file_to_openai(self, file_path: str, filename: str) -> Optional[str]:
         """
@@ -306,13 +349,16 @@ class OpenAIService:
 Analyze the provided documents and answer questions about {disclosure_code}.
 
 IMPORTANT: Extract ALL numeric data into charts and tables:
-- Gender statistics (women %, men %) → pie/bar chart, category='gender'
+- Gender statistics (women %, men %) → bar chart (preferred), category='gender'
 - Employee statistics (full-time, part-time) → bar chart, category='employees'
 - Emissions data (Scope 1/2/3, CO2) → bar chart, category='emissions'  
 - Percentages (renewable energy, recycling rate) → bar chart, category='percentages'
-- Financial data (revenue, costs) → bar/line chart, category='financial'
-- Age distribution → bar/pie chart, category='age'
-- Diversity metrics → appropriate charts, category='diversity'
+- Financial data (revenue, costs) → bar chart, category='financial'
+- Age distribution → bar chart (preferred), category='age'
+- Diversity metrics → bar chart (preferred), category='diversity'
+- Time series data → line chart only for trends over time
+
+DEFAULT: Use bar chart unless specifically showing time-based trends (line) or part-of-whole relationships (pie).
 
 Provide comprehensive answers in Markdown format with proper headings, lists, and bold text."""
                     },

@@ -105,13 +105,25 @@ def generate_ai_answer_task(self, disclosure_id: int, user_id: int, ai_temperatu
     import openai
     
     task_id = self.request.id
-    
+
+    # Helper function to update task status only if it exists
+    def update_status(**kwargs):
+        if task_status:
+            for key, value in kwargs.items():
+                setattr(task_status, key, value)
+            task_status.save()
+
     try:
-        # Update task status to running
-        task_status = AITaskStatus.objects.get(task_id=task_id)
-        task_status.status = 'running'
-        task_status.progress = 10
-        task_status.save()
+        # Update task status to running (if it exists - may not exist when called from bulk task)
+        task_status = None
+        try:
+            task_status = AITaskStatus.objects.get(task_id=task_id)
+            task_status.status = 'running'
+            task_status.progress = 10
+            task_status.save()
+        except AITaskStatus.DoesNotExist:
+            # Task called from bulk operation, no individual status tracking needed
+            pass
         
         # Get user and disclosure
         user = User.objects.get(id=user_id)
@@ -130,9 +142,7 @@ def generate_ai_answer_task(self, disclosure_id: int, user_id: int, ai_temperatu
         except ESRSUserResponse.DoesNotExist:
             pass
         
-        task_status.progress = 30
-        task_status.current_step = "🔗 Auto-linking global documents..."
-        task_status.save()
+        update_status(progress=30, current_step="🔗 Auto-linking global documents...")
         
         # Auto-link global documents if not excluded
         global_documents = Document.objects.filter(user=user, is_global=True)
@@ -157,10 +167,7 @@ def generate_ai_answer_task(self, disclosure_id: int, user_id: int, ai_temperatu
             ).select_related('document')
         )
         
-        task_status.progress = 50
-        task_status.current_step = f"📚 Analyzing {len(evidence_list)} linked documents..."
-        task_status.documents_used = len(evidence_list)
-        task_status.save()
+        update_status(progress=50, current_step=f"📚 Analyzing {len(evidence_list)} linked documents...", documents_used=len(evidence_list))
         
         # Check if we have RAG chunks available for semantic search
         from accounts.models import DocumentChunk
@@ -209,9 +216,8 @@ Write a complete, professional answer for this disclosure requirement using the 
 - Structure your answer appropriately for this type of disclosure
 - If certain required information is not available, note what is missing"""
 
-            task_status.progress = 70
-            task_status.save()
-            
+            update_status(progress=70)
+
             # Get relevant documents for RAG search
             global_docs = Document.objects.filter(user=user, is_global=True)
             linked_doc_ids = [evidence.document_id for evidence in evidence_list]
@@ -225,8 +231,7 @@ Write a complete, professional answer for this disclosure requirement using the 
             
             logger.info(f'Using RAG search on {len(relevant_doc_ids)} documents: {len(global_docs)} global + {len(specific_docs)} specific')
             
-            task_status.current_step = f"🔍 Running TIER 1+2 RAG search on {len(relevant_doc_ids)} documents..."
-            task_status.save()
+            update_status(current_step=f"🔍 Running TIER 1+2 RAG search on {len(relevant_doc_ids)} documents...")
             
             # Use unified TIER 1+2 RAG engine
             from accounts.rag_tier_engine import run_tier_rag
@@ -244,10 +249,11 @@ Write a complete, professional answer for this disclosure requirement using the 
             logger.info(f'TIER RAG complete: {len(expanded_chunks)} chunks, {avg_confidence:.2%} confidence, context={len(rag_context)} chars')
             
             # Update task status with processing steps
-            task_status.current_step = f"📊 TIER RAG complete: {len(expanded_chunks)} chunks analyzed..."
-            task_status.chunks_used = len(expanded_chunks)
-            task_status.processing_steps = processing_steps  # Store for UI display
-            task_status.save()
+            update_status(
+                current_step=f"📊 TIER RAG complete: {len(expanded_chunks)} chunks analyzed...",
+                chunks_used=len(expanded_chunks),
+                processing_steps=processing_steps
+            )
             
             # Build cited documents list from expanded_chunks
             cited_documents = []
@@ -284,9 +290,10 @@ If the documents contain data like percentages (e.g., 0.70 = 70%), present them 
             
             logger.info(f'Built TIER RAG context with {len(rag_context)} characters from {len(cited_documents)} chunks')
             
-            task_status.current_step = f"🤖 Generating AI response using GPT-4o with context from {len(cited_documents)} sections..."
-            task_status.progress = 80
-            task_status.save()
+            update_status(
+                current_step=f"🤖 Generating AI response using GPT-4o with context from {len(cited_documents)} sections...",
+                progress=80
+            )
             
             # Call OpenAI Chat Completions API with RAG context + track token usage
             client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
@@ -424,8 +431,7 @@ Write a professional answer that directly addresses the disclosure requirement u
             
             # Store reasoning summary if available
             if reasoning_summary:
-                task_status.reasoning_summary = reasoning_summary
-                task_status.save()
+                update_status(reasoning_summary=reasoning_summary)
             
             if not ai_answer:
                 raise ValueError('No answer generated by OpenAI')
@@ -433,8 +439,7 @@ Write a professional answer that directly addresses the disclosure requirement u
             logger.info(f'Generated AI answer using RAG: {len(ai_answer)} characters')
             
             # TIER 3: LLM Self-Reflection + Reranking (if confidence < 85%)
-            task_status.current_step = f"🔬 Running TIER 3 refinement (confidence: {avg_confidence:.1%})..."
-            task_status.save()
+            update_status(current_step=f"🔬 Running TIER 3 refinement (confidence: {avg_confidence:.1%})...")
             
             from accounts.rag_tier_engine import run_tier3_refinement
             
@@ -454,8 +459,7 @@ Write a professional answer that directly addresses the disclosure requirement u
             processing_steps = updated_steps
             
             # Update task_status with TIER 3 processing steps
-            task_status.processing_steps = processing_steps
-            task_status.save()
+            update_status(processing_steps=processing_steps)
             
             logger.info(f'TIER 3 complete: Final confidence {avg_confidence:.2%}')
         
@@ -509,9 +513,7 @@ REQUIREMENT:
             logger.info(f'Generated AI answer WITHOUT file_search: {len(ai_answer)} chars')
         
         # Common code for both paths
-        task_status.progress = 90
-        task_status.current_step = "📊 Calculating confidence score..."
-        task_status.save()
+        update_status(progress=90, current_step="📊 Calculating confidence score...")
         
         # Calculate confidence score from TIER RAG or basic calculation
         if has_rag_chunks and cited_documents:
@@ -543,9 +545,10 @@ REQUIREMENT:
             confidence_score = calculate_confidence_score(ai_answer, cited_documents)
             logger.info(f'Calculated confidence score: {confidence_score}% (basic calculation)')
         
-        task_status.confidence_score = confidence_score
-        task_status.current_step = f"✅ Finalizing answer (Confidence: {confidence_score}%)..."
-        task_status.save()
+        update_status(
+            confidence_score=confidence_score,
+            current_step=f"✅ Finalizing answer (Confidence: {confidence_score}%)..."
+        )
         
         # Prepare source information
         sources = {
@@ -686,13 +689,16 @@ REQUIREMENT:
         )
         
         # Mark task as completed
-        task_status.status = 'completed'
-        task_status.progress = 100
-        task_status.completed_items = 1
-        task_status.result = f"AI answer generated for {disclosure.code}"
+        result_msg = f"AI answer generated for {disclosure.code}"
         if analytics and analytics.get('has_numeric_data'):
-            task_status.result += f" with {len(analytics.get('charts', []))} charts"
-        task_status.save()
+            result_msg += f" with {len(analytics.get('charts', []))} charts"
+
+        update_status(
+            status='completed',
+            progress=100,
+            completed_items=1,
+            result=result_msg
+        )
         
         logger.info(f'AI answer generated successfully for {disclosure.code}')
         
@@ -705,12 +711,19 @@ REQUIREMENT:
     except Exception as e:
         logger.error(f'Error generating AI answer: {str(e)}')
         
-        # Mark task as failed
+        # Mark task as failed (if task_status exists)
         try:
-            task_status = AITaskStatus.objects.get(task_id=task_id)
-            task_status.status = 'failed'
-            task_status.error_message = str(e)
-            task_status.save()
+            if task_status:
+                update_status(status='failed', error_message=str(e))
+            else:
+                # Try to fetch it one more time in case it was created
+                try:
+                    task_status_fallback = AITaskStatus.objects.get(task_id=task_id)
+                    task_status_fallback.status = 'failed'
+                    task_status_fallback.error_message = str(e)
+                    task_status_fallback.save()
+                except Exception:
+                    pass
         except Exception:
             pass
         

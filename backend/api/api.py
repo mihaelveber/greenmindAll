@@ -86,40 +86,46 @@ api.add_router("/ai", model_selection_router)
 @api.post("/auth/register", response=TokenSchema)
 async def register(request, data: RegisterSchema):
     """Async registracija uporabnika"""
+    logger.info(f"Registration attempt for email: {data.email}")
     if data.password != data.password_confirm:
+        logger.warning(f"Registration failed - passwords don't match for email: {data.email}")
         return JsonResponse(
-            {"message": "Gesli se ne ujemata"}, 
+            {"message": "Gesli se ne ujemata"},
             status=400
         )
     
     # Preveri če email že obstaja
     if await User.objects.filter(email=data.email).aexists():
+        logger.warning(f"Registration failed - email already exists: {data.email}")
         return JsonResponse(
-            {"message": "Email že obstaja"}, 
+            {"message": "Email že obstaja"},
             status=400
         )
     
     # Preveri če username že obstaja
     if await User.objects.filter(username=data.username).aexists():
+        logger.warning(f"Registration failed - username already exists: {data.username}")
         return JsonResponse(
-            {"message": "Uporabniško ime že obstaja"}, 
+            {"message": "Uporabniško ime že obstaja"},
             status=400
         )
-    
+
     # Ustvari uporabnika
     user = await sync_to_async(User.objects.create)(
         email=data.email,
         username=data.username,
         password=make_password(data.password)
     )
-    
+    logger.info(f"User registered successfully: {user.email} (ID: {user.id})")
+
     # Pošlji welcome email async (Celery)
     send_welcome_email.delay(user.email, user.username)
-    
+    logger.debug(f"Welcome email task queued for: {user.email}")
+
     # Ustvari tokena
     access_token = create_access_token(user.id)
     refresh_token = create_refresh_token(user.id)
-    
+
     return {
         "access_token": access_token,
         "refresh_token": refresh_token,
@@ -140,31 +146,36 @@ async def register(request, data: RegisterSchema):
 @api.post("/auth/login", response=TokenSchema)
 async def login(request, data: LoginSchema):
     """Async prijava uporabnika"""
+    logger.info(f"Login attempt for email: {data.email}")
     try:
         user = await User.objects.aget(email=data.email)
     except User.DoesNotExist:
+        logger.warning(f"Login failed - user not found: {data.email}")
         return JsonResponse(
-            {"message": "Napačen email ali geslo"}, 
+            {"message": "Napačen email ali geslo"},
             status=401
         )
     
     # Preveri geslo
     if not user.check_password(data.password):
+        logger.warning(f"Login failed - incorrect password for: {data.email}")
         return JsonResponse(
-            {"message": "Napačen email ali geslo"}, 
+            {"message": "Napačen email ali geslo"},
             status=401
         )
-    
+
     if not user.is_active:
+        logger.warning(f"Login failed - account inactive: {data.email}")
         return JsonResponse(
-            {"message": "Račun je deaktiviran"}, 
+            {"message": "Račun je deaktiviran"},
             status=403
         )
-    
+
     # Ustvari tokena
     access_token = create_access_token(user.id)
     refresh_token = create_refresh_token(user.id)
-    
+    logger.info(f"User logged in successfully: {user.email} (ID: {user.id})")
+
     return {
         "access_token": access_token,
         "refresh_token": refresh_token,
@@ -250,34 +261,40 @@ def apple_login(request):
 async def set_company_type(request, data: CompanyTypeSchema):
     """Nastavi tip podjetja in website URL"""
     user = request.auth
+    logger.info(f"Setting company type: {data.company_type} for user {user.id}")
     user.company_type = data.company_type
-    
+
     # Save website URL if provided
     if hasattr(data, 'website_url') and data.website_url:
         user.website_url = data.website_url
-    
+        logger.debug(f"Website URL set: {data.website_url} for user {user.id}")
+
     await sync_to_async(user.save)()
-    
+
     return {"message": "Company type saved successfully", "success": True}
 
 @api.post("/profile/scrape-website", response=MessageSchema, auth=JWTAuth())
 async def scrape_website(request, data: dict):
     """Trigger website scraping task (for wizard - saves to user.website_url)"""
     from accounts.website_scraper_task import scrape_company_website_task
-    
+
     user = request.auth
     website_url = data.get('website_url')
-    
+
     if not website_url:
+        logger.warning(f"Website scraping failed - no URL provided by user {user.id}")
         return {"message": "Website URL is required", "success": False}
-    
+
+    logger.info(f"Website scraping request: {website_url} for user {user.id}")
+
     # Save to user profile
     user.website_url = website_url
     await sync_to_async(user.save)()
-    
+
     # Trigger async scraping task
     task = await sync_to_async(scrape_company_website_task.delay)(user.id, website_url)
-    
+    logger.info(f"Website scraping task started: task_id={task.id}, url={website_url}, user={user.id}")
+
     return {"message": "Website scraping started", "success": True, "task_id": task.id}
 
 @api.post("/profile/update-website", response=MessageSchema, auth=JWTAuth())
@@ -344,18 +361,18 @@ async def upload_document(request):
     from accounts.document_parser import parse_document, is_supported_format, get_supported_formats_message
     from django.conf import settings
     import os
-    import logging
-    
-    logger = logging.getLogger(__name__)
-    
+
     if not request.FILES.get('file'):
+        logger.warning(f"Document upload failed - no file provided by user {request.auth.id}")
         return JsonResponse({"message": "No file provided"}, status=400)
-    
+
     file = request.FILES['file']
     user = request.auth
-    
+    logger.info(f"Document upload started: {file.name} by user {user.id} ({user.email})")
+
     # Check if file format is supported
     if not is_supported_format(file.name):
+        logger.warning(f"Document upload failed - unsupported format: {file.name} by user {user.id}")
         return JsonResponse({
             "message": f"Unsupported file format. {get_supported_formats_message()}",
             "success": False
@@ -555,24 +572,29 @@ async def delete_document(request, document_id: int):
     from accounts.models import Document
     from django.core.files.storage import default_storage
     import os
-    
+
+    logger.info(f"Delete document request: document_id={document_id}, user={request.auth.id}")
+
     try:
         # Pridobi dokument in preveri lastništvo
         document = await sync_to_async(Document.objects.get)(
             id=document_id,
             user=request.auth
         )
-        
+
         # Izbriši fizično datoteko
         if document.file_path and default_storage.exists(document.file_path):
             await sync_to_async(default_storage.delete)(document.file_path)
-        
+            logger.debug(f"Deleted file from storage: {document.file_path}")
+
         # Izbriši database zapis
         await sync_to_async(document.delete)()
-        
+        logger.info(f"Document deleted successfully: document_id={document_id}, file={document.file_name}, user={request.auth.id}")
+
         return {"message": "Document deleted successfully", "success": True}
-    
+
     except Document.DoesNotExist:
+        logger.warning(f"Delete document failed - not found or access denied: document_id={document_id}, user={request.auth.id}")
         return JsonResponse({"message": "Document not found or access denied"}, status=404)
 
 
@@ -945,7 +967,9 @@ async def get_esrs_standard_detail(request, standard_id: int):
 async def save_notes(request, data: SaveNotesSchema):
     """Shrani ali posodobi zapiske za disclosure točko"""
     from accounts.models import ESRSUserResponse, ESRSDisclosure
-    
+
+    logger.info(f"Save notes: disclosure_id={data.disclosure_id}, user={request.auth.id}")
+
     try:
         disclosure = await sync_to_async(ESRSDisclosure.objects.get)(id=data.disclosure_id)
         
@@ -964,10 +988,12 @@ async def save_notes(request, data: SaveNotesSchema):
         if not created:
             user_response.notes = data.notes
             await sync_to_async(user_response.save)()
-        
+
+        logger.debug(f"Notes {'created' if created else 'updated'} for disclosure_id={data.disclosure_id}, user={request.auth.id}")
         return {"message": "Notes saved successfully", "success": True}
-    
+
     except ESRSDisclosure.DoesNotExist:
+        logger.error(f"Save notes failed - disclosure not found: disclosure_id={data.disclosure_id}, user={request.auth.id}")
         return JsonResponse({"message": "Disclosure not found"}, status=404)
 
 
@@ -1055,7 +1081,9 @@ async def save_manual_answer(request, data: SaveManualAnswerSchema):
 async def save_final_answer(request, data: SaveFinalAnswerSchema):
     """Shrani ali posodobi končni odobreni odgovor za disclosure točko (za report) in ustvari version"""
     from accounts.models import ESRSUserResponse, ESRSDisclosure, ItemVersion
-    
+
+    logger.info(f"Save final answer: disclosure_id={data.disclosure_id}, user={request.auth.id}")
+
     try:
         disclosure = await sync_to_async(ESRSDisclosure.objects.get)(id=data.disclosure_id)
         
@@ -1112,10 +1140,12 @@ async def save_final_answer(request, data: SaveFinalAnswerSchema):
         if parent_version:
             parent_version.is_selected = False
             await sync_to_async(parent_version.save)()
-        
+
+        logger.info(f"Final answer saved successfully: disclosure_id={data.disclosure_id}, version={new_version.version_number}, user={request.auth.id}")
         return {"message": "Final answer saved successfully", "success": True}
-    
+
     except ESRSDisclosure.DoesNotExist:
+        logger.error(f"Save final answer failed - disclosure not found: disclosure_id={data.disclosure_id}, user={request.auth.id}")
         return JsonResponse({"message": "Disclosure not found"}, status=404)
 
 
@@ -1301,13 +1331,15 @@ async def link_document_to_disclosure(request, data: LinkDocumentSchema):
     """Poveži dokument z ESRS disclosure točko (ONE document can be linked to MULTIPLE disclosures)"""
     from accounts.models import DocumentEvidence, Document, ESRSDisclosure
     from django.db import IntegrityError
-    
+
+    logger.info(f"Link document: document_id={data.document_id}, disclosure_id={data.disclosure_id}, excluded={data.is_excluded}, user={request.auth.id}")
+
     try:
         # Verify document belongs to user
         document = await sync_to_async(
             Document.objects.get
         )(id=data.document_id, user=request.auth)
-        
+
         disclosure = await sync_to_async(ESRSDisclosure.objects.get)(id=data.disclosure_id)
         
         # Check if this specific document is already linked to THIS disclosure
@@ -1325,8 +1357,9 @@ async def link_document_to_disclosure(request, data: LinkDocumentSchema):
             existing.is_excluded = data.is_excluded if data.is_excluded is not None else existing.is_excluded
             await sync_to_async(existing.save)()
             action = "excluded" if data.is_excluded else "updated"
+            logger.info(f"Document evidence {action}: evidence_id={existing.id}, user={request.auth.id}")
             return {"message": f"Document evidence {action}", "success": True}
-        
+
         # Create new link (document can be linked to multiple disclosures)
         evidence = DocumentEvidence(
             document=document,
@@ -1336,15 +1369,19 @@ async def link_document_to_disclosure(request, data: LinkDocumentSchema):
             is_excluded=data.is_excluded if data.is_excluded is not None else False
         )
         await sync_to_async(evidence.save)()
-        
+        logger.info(f"Document linked successfully: evidence_id={evidence.id}, document={document.file_name}, user={request.auth.id}")
+
         return {"message": "Document linked successfully", "success": True}
-    
+
     except Document.DoesNotExist:
+        logger.warning(f"Link document failed - document not found: document_id={data.document_id}, user={request.auth.id}")
         return JsonResponse({"message": "Document not found or access denied"}, status=404)
     except ESRSDisclosure.DoesNotExist:
+        logger.warning(f"Link document failed - disclosure not found: disclosure_id={data.disclosure_id}, user={request.auth.id}")
         return JsonResponse({"message": "Disclosure not found"}, status=404)
     except IntegrityError as e:
         # unique_together constraint violation
+        logger.warning(f"Link document failed - already linked: document_id={data.document_id}, disclosure_id={data.disclosure_id}, user={request.auth.id}")
         return JsonResponse({
             "message": "Document is already linked to this disclosure",
             "success": False
@@ -1469,15 +1506,17 @@ async def get_ai_answer(request, data: GetAIAnswerSchema):
     """Zaženi Celery task za generiranje AI odgovora"""
     from accounts.models import ESRSDisclosure, AITaskStatus
     from accounts.tasks import generate_ai_answer_task
-    
+
+    logger.info(f"AI answer request: disclosure_id={data.disclosure_id}, model={data.model_id}, user={request.auth.id}")
+
     try:
         # Verify disclosure exists
         disclosure = await sync_to_async(ESRSDisclosure.objects.select_related('standard').get)(id=data.disclosure_id)
-        
+
         # Generate task ID first
         from celery import uuid as celery_uuid
         task_id = celery_uuid()
-        
+
         # Create task status record BEFORE starting task (to avoid race condition)
         task_status = await sync_to_async(AITaskStatus.objects.create)(
             task_id=task_id,
@@ -1489,21 +1528,25 @@ async def get_ai_answer(request, data: GetAIAnswerSchema):
             total_items=1,
             completed_items=0
         )
-        
+        logger.debug(f"AI task status created: task_id={task_id}, disclosure={disclosure.code}")
+
         # Start Celery task with selected model (using pre-generated task_id)
         task = generate_ai_answer_task.apply_async(
             args=(data.disclosure_id, request.auth.id, data.ai_temperature, data.model_id),
             task_id=task_id
         )
-        
+        logger.info(f"AI answer task started: task_id={task.id}, disclosure={disclosure.code}, model={data.model_id}")
+
         return StartAITaskResponse(
             task_id=task.id,
             message=f"AI answer generation started for {disclosure.code} using {data.model_id}"
         )
-        
+
     except ESRSDisclosure.DoesNotExist:
+        logger.error(f"AI answer failed - disclosure not found: disclosure_id={data.disclosure_id}, user={request.auth.id}")
         return JsonResponse({"message": "Disclosure not found"}, status=404)
     except Exception as e:
+        logger.exception(f"AI answer failed with exception: disclosure_id={data.disclosure_id}, user={request.auth.id}")
         return JsonResponse({"message": f"Error starting AI task: {str(e)}"}, status=500)
 
 
@@ -2158,22 +2201,26 @@ async def get_bulk_ai_answers(request, standard_id: int):
     """Zaženi Celery task za generiranje AI odgovorov za VSE disclosure točke v standardu"""
     from accounts.models import ESRSStandard, ESRSDisclosure, AITaskStatus
     from accounts.tasks import generate_bulk_ai_answers_task
-    
+
+    logger.info(f"Bulk AI answer request: standard_id={standard_id}, user={request.auth.id}")
+
     try:
         # Verify standard exists
         standard = await sync_to_async(ESRSStandard.objects.get)(id=standard_id)
-        
+
         # Count disclosures
         disclosure_count = await sync_to_async(
             lambda: ESRSDisclosure.objects.filter(standard=standard).count()
         )()
-        
-        # Start Celery task
-        task = generate_bulk_ai_answers_task.delay(standard_id, request.auth.id)
-        
-        # Create task status record
+        logger.info(f"Starting bulk AI task for {disclosure_count} disclosures in standard {standard.code}")
+
+        # Create task status record FIRST, then start Celery task
+        # This prevents race condition where task tries to fetch status before it's created
+        import uuid
+        task_id = str(uuid.uuid4())
+
         task_status = await sync_to_async(AITaskStatus.objects.create)(
-            task_id=task.id,
+            task_id=task_id,
             user=request.auth,
             standard=standard,
             task_type='bulk',
@@ -2182,15 +2229,25 @@ async def get_bulk_ai_answers(request, standard_id: int):
             total_items=disclosure_count,
             completed_items=0
         )
-        
+
+        # Now start Celery task with the pre-created task_id
+        task = generate_bulk_ai_answers_task.apply_async(
+            args=[standard_id, request.auth.id],
+            task_id=task_id
+        )
+
+        logger.info(f"Bulk AI task started: task_id={task.id}, standard={standard.code}, count={disclosure_count}, user={request.auth.id}")
+
         return StartAITaskResponse(
             task_id=task.id,
             message=f"Bulk AI generation started for {standard.code} ({disclosure_count} disclosures)"
         )
-        
+
     except ESRSStandard.DoesNotExist:
+        logger.error(f"Bulk AI failed - standard not found: standard_id={standard_id}, user={request.auth.id}")
         return JsonResponse({"message": "Standard not found"}, status=404)
     except Exception as e:
+        logger.exception(f"Bulk AI failed with exception: standard_id={standard_id}, user={request.auth.id}")
         return JsonResponse({"message": f"Error starting bulk AI task: {str(e)}"}, status=500)
 
 

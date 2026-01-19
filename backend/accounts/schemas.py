@@ -332,3 +332,10 @@ class AssignDisclosureSchema(Schema):
     """Schema for assigning disclosure to a team member"""
     disclosure_id: int
     assigned_to_id: Optional[int] = None  # None to unassign
+
+class UpdateRAGSettingsSchema(Schema):
+    """Schema for updating RAG tier settings"""
+    rag_tier1_enabled: bool
+    rag_tier2_threshold: int
+    rag_tier3_enabled: bool
+    rag_tier3_threshold: int

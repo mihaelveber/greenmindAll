@@ -4,7 +4,7 @@ from django.http import JsonResponse
 from django.db import models
 from accounts.auth import JWTAuth, AdminAuth, create_access_token, create_refresh_token
 from accounts.schemas import (
-    LoginSchema, RegisterSchema, TokenSchema, 
+    LoginSchema, RegisterSchema, TokenSchema,
     UserSchema, MessageSchema, CompanyTypeSchema, DocumentSchema,
     ESRSCategorySchema, ESRSStandardSchema, ESRSStandardDetailSchema,
     SaveNotesSchema, SaveManualAnswerSchema, SaveFinalAnswerSchema, LinkDocumentSchema, GetAIAnswerSchema,
@@ -12,7 +12,7 @@ from accounts.schemas import (
     AITaskStatusSchema, StartAITaskResponse, UpdateNotesSchema, GenerateImageSchema,
     StartConversationSchema, SendMessageSchema, SelectVersionSchema, ToggleChartSelectionSchema,
     StandardTypeSchema, CategoryWithProgressSchema, UpdateChartSchema, UpdateTableSchema,
-    ChartSelectionResponseSchema, WebsiteUrlSchema, AssignDisclosureSchema
+    ChartSelectionResponseSchema, WebsiteUrlSchema, AssignDisclosureSchema, UpdateRAGSettingsSchema
 )
 from django.contrib.auth import get_user_model, authenticate
 from django.contrib.auth.hashers import make_password
@@ -82,6 +82,10 @@ api.add_router("/admin", admin_router, tags=["Admin"])
 # Import model selection API router
 from .model_selection_api import router as model_selection_router
 api.add_router("/ai", model_selection_router)
+
+# Import branding API router
+from .branding_api import router as branding_router
+api.add_router("", branding_router)
 
 @api.post("/auth/register", response=TokenSchema)
 async def register(request, data: RegisterSchema):
@@ -228,21 +232,17 @@ async def get_rag_settings(request):
     }
 
 @api.post("/auth/update-rag-settings", response=MessageSchema, auth=JWTAuth())
-async def update_rag_settings(request, data: dict):
+async def update_rag_settings(request, data: UpdateRAGSettingsSchema):
     """Update user's RAG TIER configuration"""
     user = request.auth
-    
-    if 'rag_tier1_enabled' in data:
-        user.rag_tier1_enabled = data['rag_tier1_enabled']
-    if 'rag_tier2_threshold' in data:
-        user.rag_tier2_threshold = data['rag_tier2_threshold']
-    if 'rag_tier3_enabled' in data:
-        user.rag_tier3_enabled = data['rag_tier3_enabled']
-    if 'rag_tier3_threshold' in data:
-        user.rag_tier3_threshold = data['rag_tier3_threshold']
-    
+
+    user.rag_tier1_enabled = data.rag_tier1_enabled
+    user.rag_tier2_threshold = data.rag_tier2_threshold
+    user.rag_tier3_enabled = data.rag_tier3_enabled
+    user.rag_tier3_threshold = data.rag_tier3_threshold
+
     await sync_to_async(user.save)()
-    
+
     return {"message": "RAG settings updated successfully", "success": True}
 
 @api.get("/auth/google/login")

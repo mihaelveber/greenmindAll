@@ -227,6 +227,85 @@
           </n-space>
         </n-form-item>
 
+        <!-- Company Branding -->
+        <n-divider title-placement="left">🎨 Company Branding</n-divider>
+
+        <n-alert type="info" style="margin-bottom: 16px;">
+          Upload your company logo to generate branded PDF reports with AI-analyzed colors and styling.
+        </n-alert>
+
+        <n-form-item label="Company Logo">
+          <n-space vertical style="width: 100%;">
+            <n-upload
+              ref="logoUploadRef"
+              :max="1"
+              accept="image/png,image/jpeg,image/jpg,image/webp"
+              :custom-request="handleLogoUpload"
+              @before-upload="beforeLogoUpload"
+              :show-file-list="false"
+            >
+              <n-button>
+                <template #icon>
+                  <n-icon :component="CloudUploadOutline" />
+                </template>
+                Choose Logo
+              </n-button>
+            </n-upload>
+
+            <div v-if="brandingInfo.logo_url" style="margin-top: 12px;">
+              <n-space align="center" :size="16">
+                <img
+                  :src="brandingInfo.logo_url"
+                  alt="Company Logo"
+                  style="max-width: 120px; max-height: 80px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);"
+                />
+                <n-space vertical :size="4">
+                  <n-text strong>Current Logo</n-text>
+                  <n-button size="small" type="error" @click="deleteLogo" :loading="deletingLogo">
+                    Delete Logo
+                  </n-button>
+                </n-space>
+              </n-space>
+            </div>
+
+            <div v-if="uploadingLogo" style="margin-top: 12px;">
+              <n-spin size="small">
+                <n-text depth="3">Analyzing logo with AI...</n-text>
+              </n-spin>
+            </div>
+          </n-space>
+        </n-form-item>
+
+        <n-form-item v-if="brandingInfo.brand_style?.colors" label="Brand Colors">
+          <n-space :size="12">
+            <div v-for="(color, key) in brandingInfo.brand_style.colors" :key="key" style="text-align: center;">
+              <div
+                :style="{
+                  width: '50px',
+                  height: '50px',
+                  backgroundColor: color,
+                  borderRadius: '8px',
+                  border: '2px solid rgba(255,255,255,0.2)',
+                  marginBottom: '4px'
+                }"
+              ></div>
+              <n-text depth="3" style="font-size: 10px;">{{ key }}</n-text>
+            </div>
+          </n-space>
+        </n-form-item>
+
+        <n-form-item v-if="brandingInfo.brand_style?.personality" label="Brand Personality">
+          <n-space :size="8">
+            <n-tag
+              v-for="trait in brandingInfo.brand_style.personality"
+              :key="trait"
+              type="success"
+            >
+              {{ trait }}
+            </n-tag>
+          </n-space>
+        </n-form-item>
+
         <!-- RAG TIER Settings -->
         <n-divider title-placement="left">🚀 AI RAG Configuration</n-divider>
         
@@ -342,16 +421,22 @@ import {
   NInput,
   NSelect,
   NAlert,
-  type MenuOption
+  NUpload,
+  NSwitch,
+  NSlider,
+  NDivider,
+  type MenuOption,
+  type UploadCustomRequestOptions
 } from 'naive-ui'
-import { 
-  HomeOutline, 
-  PersonOutline, 
+import {
+  HomeOutline,
+  PersonOutline,
   LogOutOutline,
   PeopleOutline,
   SettingsOutline,
   DocumentTextOutline,
-  ClipboardOutline
+  ClipboardOutline,
+  CloudUploadOutline
 } from '@vicons/ionicons5'
 import LanguageSelector from '../components/LanguageSelector.vue'
 import api from '../services/api'
@@ -378,7 +463,7 @@ interface StandardType {
 const router = useRouter()
 const authStore = useAuthStore()
 const message = useMessage()
-const { t } = useI18n()
+const { t, locale } = useI18n()
 
 const activeKey = ref('dashboard')
 const loadingStats = ref(false)
@@ -428,6 +513,21 @@ const ragSettings = ref({
   tier3_enabled: false,
   tier3_threshold: 40
 })
+
+// Branding state
+const brandingInfo = ref<{
+  has_logo: boolean
+  logo_url: string | null
+  brand_style: any
+}>({
+  has_logo: false,
+  logo_url: null,
+  brand_style: null
+})
+
+const uploadingLogo = ref(false)
+const deletingLogo = ref(false)
+const logoUploadRef = ref()
 
 const avatarOptions = [
   { label: '👤 Default', value: 'default' },
@@ -516,7 +616,7 @@ const userDropdownOptions = [
   }
 ]
 
-const handleMenuUpdate = (key: string) => {
+const handleMenuUpdate = async (key: string) => {
   if (key === 'dashboard') {
     activeKey.value = 'dashboard'
     router.push('/dashboard')
@@ -536,6 +636,8 @@ const handleMenuUpdate = (key: string) => {
     router.push('/documents')
   } else if (key === 'settings') {
     showSettingsModal.value = true
+    // Load branding info when opening settings
+    await loadBrandingInfo()
   } else if (key === 'profile') {
     activeKey.value = 'profile'
     message.info('Profile page coming soon')
@@ -564,7 +666,6 @@ const saveSettings = async () => {
     localStorage.setItem('userAvatar', selectedAvatar.value)
     
     // Save and change language
-    const { locale } = useI18n()
     localStorage.setItem('locale', selectedLanguage.value)
     locale.value = selectedLanguage.value
     
@@ -590,6 +691,94 @@ const saveSettings = async () => {
 const getAvatarEmoji = (avatarValue: string) => {
   const avatar = avatarOptions.find(a => a.value === avatarValue)
   return avatar ? avatar.label.split(' ')[0] : '👤'
+}
+
+// Branding functions
+const loadBrandingInfo = async () => {
+  try {
+    const response = await api.get('/branding/style')
+    brandingInfo.value = response.data
+    console.log('🎨 Loaded branding:', response.data)
+  } catch (error) {
+    console.error('Failed to load branding:', error)
+  }
+}
+
+const beforeLogoUpload = (data: { file: { file: File | null }; fileList: any[] }) => {
+  const file = data.file.file
+  if (!file) {
+    message.error('No file selected')
+    return false
+  }
+
+  console.log('📁 File validation:', file.name, file.size, file.type)
+
+  const isImage = file.type.startsWith('image/')
+  if (!isImage) {
+    message.error('Please upload an image file (PNG, JPG, WEBP)')
+    return false
+  }
+
+  const isLt5M = file.size / 1024 / 1024 < 5
+  if (!isLt5M) {
+    message.error(`Logo must be smaller than 5MB (current: ${(file.size / 1024 / 1024).toFixed(2)}MB)`)
+    return false
+  }
+
+  return true
+}
+
+const handleLogoUpload = async (options: UploadCustomRequestOptions) => {
+  const { file, onFinish, onError } = options
+  uploadingLogo.value = true
+
+  try {
+    const formData = new FormData()
+    formData.append('file', file.file as File)
+
+    const response = await api.post('/branding/upload-logo', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    })
+
+    console.log('🎨 Upload response:', response.data)
+    console.log('🎨 Brand style colors:', response.data.brand_style?.colors)
+
+    brandingInfo.value = {
+      has_logo: true,
+      logo_url: response.data.logo_url,
+      brand_style: response.data.brand_style
+    }
+
+    message.success('Logo uploaded and analyzed with AI successfully! 🎨')
+    console.log('🎨 Updated brandingInfo:', brandingInfo.value)
+    onFinish()
+  } catch (error: any) {
+    console.error('Failed to upload logo:', error)
+    message.error(error.response?.data?.message || 'Failed to upload logo')
+    onError()
+  } finally {
+    uploadingLogo.value = false
+  }
+}
+
+const deleteLogo = async () => {
+  deletingLogo.value = true
+  try {
+    await api.delete('/branding/logo')
+    brandingInfo.value = {
+      has_logo: false,
+      logo_url: null,
+      brand_style: null
+    }
+    message.success('Logo deleted successfully')
+  } catch (error: any) {
+    console.error('Failed to delete logo:', error)
+    message.error('Failed to delete logo')
+  } finally {
+    deletingLogo.value = false
+  }
 }
 
 const formatDate = (date: any) => {
@@ -772,7 +961,7 @@ onMounted(async () => {
   if (!authStore.user) {
     await authStore.fetchCurrentUser()
   }
-  
+
   // Load RAG TIER settings
   try {
     const response = await api.get('/auth/rag-settings')
@@ -787,7 +976,10 @@ onMounted(async () => {
   } catch (error) {
     console.error('Error loading RAG settings:', error)
   }
-  
+
+  // Load branding info
+  await loadBrandingInfo()
+
   // Initialize theme
   const theme = localStorage.getItem('theme')
   if (theme === 'dark') {
@@ -795,7 +987,7 @@ onMounted(async () => {
   } else {
     document.documentElement.classList.remove('dark')
   }
-  
+
   await Promise.all([loadStatistics(), loadStandardTypes()])
   startPolling()
 })

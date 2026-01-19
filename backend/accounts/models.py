@@ -43,9 +43,17 @@ class User(AbstractUser):
     website_url = models.URLField(blank=True, null=True, help_text='Company website URL for content analysis')
     openai_vector_store_id = models.CharField(max_length=255, blank=True, null=True, help_text='OpenAI Vector Store ID for file search tool')
     allowed_standards = models.JSONField(
-        default=list, 
+        default=list,
         blank=True,
         help_text='List of allowed standard types for this user (e.g., ["ESRS", "ISO9001"]). Empty = all standards allowed.'
+    )
+
+    # Company Branding for PDF Reports
+    company_logo = models.ImageField(upload_to='company_logos/', blank=True, null=True, help_text='Company logo for branded PDF reports')
+    brand_style = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text='AI-generated brand style guide: colors, fonts, layout preferences. Generated from logo analysis.'
     )
     
     # Team Collaboration

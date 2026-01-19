@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ report_title }}</title>
+    <style>
+        {{ custom_css }}
+    </style>
+</head>
+<body>
+    <!-- Title Page -->
+    <div class="page title-page">
+        {% if logo_path %}
+        <img src="{{ logo_path }}" alt="Company Logo" class="logo" style="max-height: 100px; margin-bottom: 40px;">
+        {% endif %}
+
+        <h1>{{ report_title }}</h1>
+        <div class="subtitle">{{ report_subtitle }}</div>
+
+        <div style="margin-top: 60px; color: #666;">
+            <p><strong>Company:</strong> {{ company_name }}</p>
+            <p><strong>Generated:</strong> {{ generation_date }}</p>
+            <p><strong>Report Type:</strong> {{ report_type }}</p>
+        </div>
+    </div>
+
+    <div class="page-break"></div>
+
+    <!-- Report Content -->
+    {% for standard_section in standards %}
+    <!-- Standard Title -->
+    <h1>{{ standard_section.code }}: {{ standard_section.name }}</h1>
+
+    {% if standard_section.description %}
+    <p style="font-size: 1.1em; color: #555; margin-bottom: 30px;">{{ standard_section.description }}</p>
+    {% endif %}
+
+    <!-- Disclosures -->
+    {% for disclosure in standard_section.disclosures %}
+    <div class="section no-break">
+        <h2>{{ disclosure.code }}: {{ disclosure.name }}</h2>
+
+        {% if disclosure.requirement_text %}
+        <div class="requirement">
+            <strong style="color: var(--color-accent);">Requirement:</strong>
+            <p>{{ disclosure.requirement_text }}</p>
+        </div>
+        {% endif %}
+
+        {% if disclosure.answer %}
+        <div class="card">
+            <h3>Response</h3>
+            {{ disclosure.answer|safe }}
+        </div>
+        {% endif %}
+
+        {% if disclosure.charts %}
+        <h3>Visual Analytics</h3>
+        {% for chart in disclosure.charts %}
+        <div class="chart-container no-break">
+            <img src="data:image/png;base64,{{ chart.image_base64 }}" alt="{{ chart.title }}">
+            <div class="chart-caption">{{ chart.title }} ({{ chart.type|upper }} Chart)</div>
+        </div>
+        {% endfor %}
+        {% endif %}
+
+        {% if disclosure.tables %}
+        {% for table in disclosure.tables %}
+        <div class="no-break" style="margin: 30px 0;">
+            <h3>{{ table.title }}</h3>
+            <table>
+                <thead>
+                    <tr>
+                        {% for header in table.headers %}
+                        <th>{{ header }}</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in table.rows %}
+                    <tr>
+                        {% for cell in row %}
+                        <td>{{ cell }}</td>
+                        {% endfor %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endfor %}
+        {% endif %}
+    </div>
+
+    {% if not loop.last %}
+    <div class="page-break"></div>
+    {% endif %}
+    {% endfor %}
+
+    {% if not loop.last %}
+    <div class="page-break"></div>
+    {% endif %}
+    {% endfor %}
+</body>
+</html>

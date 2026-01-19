@@ -1,6 +1,6 @@
 """
 ESRS Report Generator - PDF and Word Export
-Generates professional reports with charts and tables
+Generates professional branded reports with AI-analyzed styling
 """
 
 import logging
@@ -8,73 +8,71 @@ from typing import Optional, List
 from io import BytesIO
 import base64
 from datetime import datetime
+from pathlib import Path
+import os
 
-# PDF Generation
-from reportlab.lib.pagesizes import A4, letter
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import inch
-from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_JUSTIFY
-from reportlab.platypus import (
-    SimpleDocTemplate, Paragraph, Spacer, PageBreak, 
-    Table, TableStyle, Image as RLImage
-)
-from reportlab.lib import colors
+# HTML/CSS to PDF
+from weasyprint import HTML, CSS
+from jinja2 import Template, Environment, FileSystemLoader
 
-# Word Generation
+# Legacy Word Generation
 from docx import Document
 from docx.shared import Inches, Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from PIL import Image as PILImage
 
+# Brand Analyzer
+from .brand_analyzer import BrandAnalyzer
+
 logger = logging.getLogger(__name__)
 
 
 class ESRSReportGenerator:
-    """Generate PDF and Word reports for ESRS disclosures"""
-    
+    """Generate branded PDF and Word reports for ESRS disclosures using AI-analyzed styling"""
+
     def __init__(self, user, standard_id: Optional[int] = None, disclosure_ids: Optional[List[int]] = None):
         self.user = user
         self.standard_id = standard_id
         self.disclosure_ids = disclosure_ids
-        self.styles = getSampleStyleSheet()
-        self._setup_custom_styles()
-    
-    def _setup_custom_styles(self):
-        """Setup custom paragraph styles"""
-        # Title style
-        title_style = ParagraphStyle(
-            'CustomTitle',
-            parent=self.styles['Heading1'],
-            fontSize=24,
-            textColor=colors.HexColor('#1a472a'),
-            spaceAfter=30,
-            alignment=TA_CENTER,
-            fontName='Helvetica-Bold'
-        )
-        self.styles.add(title_style)
-        
-        # Heading2 custom
-        h2_style = ParagraphStyle(
-            'CustomH2',
-            parent=self.styles['Heading2'],
-            fontSize=16,
-            textColor=colors.HexColor('#2d5016'),
-            spaceAfter=12,
-            spaceBefore=20,
-            fontName='Helvetica-Bold'
-        )
-        self.styles.add(h2_style)
-        
-        # Body text custom
-        body_style = ParagraphStyle(
-            'CustomBody',
-            parent=self.styles['BodyText'],
-            fontSize=11,
-            leading=16,
-            alignment=TA_JUSTIFY,
-            spaceAfter=12
-        )
-        self.styles.add(body_style)
+        self.brand_analyzer = BrandAnalyzer()
+
+        # Setup Jinja2 template environment
+        template_dir = Path(__file__).parent / 'templates' / 'reports'
+        self.jinja_env = Environment(loader=FileSystemLoader(str(template_dir)))
+
+    def _get_brand_style(self) -> tuple:
+        """
+        Get or generate brand style for the user
+        Returns (style_guide dict, css string, logo_path)
+        """
+        # Check if user has brand style already
+        if self.user.brand_style and self.user.company_logo:
+            style_guide = self.user.brand_style
+            css = self.brand_analyzer.generate_css_from_style(style_guide)
+            logo_path = self.user.company_logo.path if hasattr(self.user.company_logo, 'path') else None
+            return style_guide, css, logo_path
+
+        # Check if user has logo but no style - analyze it
+        if self.user.company_logo:
+            try:
+                logo_path = self.user.company_logo.path if hasattr(self.user.company_logo, 'path') else None
+                if logo_path and os.path.exists(logo_path):
+                    logger.info(f"Analyzing logo for user {self.user.email}")
+                    style_guide = self.brand_analyzer.analyze_logo(logo_path)
+
+                    # Save style guide to user
+                    self.user.brand_style = style_guide
+                    self.user.save(update_fields=['brand_style'])
+
+                    css = self.brand_analyzer.generate_css_from_style(style_guide)
+                    return style_guide, css, logo_path
+            except Exception as e:
+                logger.warning(f"Failed to analyze logo: {e}, using default style")
+
+        # Use default style
+        style_guide = self.brand_analyzer._get_default_style_guide()
+        css = self.brand_analyzer.generate_css_from_style(style_guide)
+        return style_guide, css, None
     
     def _get_responses_queryset(self):
         """Get filtered ESRSUserResponse queryset"""
@@ -104,147 +102,102 @@ class ESRSReportGenerator:
     
     def generate_pdf(self) -> BytesIO:
         """
-        Generate PDF report
+        Generate branded PDF report using HTML/CSS with AI-analyzed styling
         Returns BytesIO buffer
         """
-        buffer = BytesIO()
-        doc = SimpleDocTemplate(
-            buffer,
-            pagesize=A4,
-            rightMargin=72,
-            leftMargin=72,
-            topMargin=72,
-            bottomMargin=72
-        )
-        
-        story = []
-        
-        # Title page
-        story.append(Spacer(1, 2*inch))
-        title = Paragraph("ESRS Sustainability Report", self.styles['CustomTitle'])
-        story.append(title)
-        story.append(Spacer(1, 0.3*inch))
-        
-        # Company info
-        company_info = f"""
-        <para align=center>
-        <b>Company:</b> {self.user.email}<br/>
-        <b>Generated:</b> {datetime.now().strftime('%B %d, %Y at %H:%M')}<br/>
-        <b>Report Type:</b> European Sustainability Reporting Standards
-        </para>
-        """
-        story.append(Paragraph(company_info, self.styles['CustomBody']))
-        story.append(PageBreak())
-        
-        # Get responses
+        # Get brand styling
+        style_guide, custom_css, logo_path = self._get_brand_style()
+
+        # Get responses data
         responses = self._get_responses_queryset()
-        
-        if not responses.exists():
-            no_data = Paragraph("No ESRS responses available for this report.", self.styles['CustomBody'])
-            story.append(no_data)
-        else:
-            # Group by standard
-            current_standard = None
-            
-            for response in responses:
-                disclosure = response.disclosure
-                standard = disclosure.standard
-                
-                # Add standard header if changed
-                if current_standard != standard.code:
-                    current_standard = standard.code
-                    story.append(Spacer(1, 0.2*inch))
-                    standard_title = Paragraph(
-                        f"{standard.code}: {standard.name}",
-                        self.styles['Heading1']
-                    )
-                    story.append(standard_title)
-                    story.append(Spacer(1, 0.1*inch))
-                
-                # Disclosure header
-                disclosure_title = Paragraph(
-                    f"<b>{disclosure.code}</b>: {disclosure.name}",
-                    self.styles['CustomH2']
-                )
-                story.append(disclosure_title)
-                
-                # Requirement
-                req_text = f"<i>Requirement:</i> {disclosure.requirement_text[:300]}..."
-                story.append(Paragraph(req_text, self.styles['Normal']))
-                story.append(Spacer(1, 0.1*inch))
-                
-                # Answer (final > ai > manual)
-                answer_text = response.final_answer or response.ai_answer or response.manual_answer
-                if answer_text:
-                    story.append(Paragraph("<b>Answer:</b>", self.styles['CustomH2']))
-                    # Split long text into paragraphs
-                    paragraphs = answer_text.split('\n\n')
-                    for para in paragraphs[:5]:  # Limit to first 5 paragraphs
-                        if para.strip():
-                            story.append(Paragraph(para.strip(), self.styles['CustomBody']))
-                
-                # Add charts if available
-                if response.chart_data:
-                    story.append(Spacer(1, 0.2*inch))
-                    story.append(Paragraph("<b>Visual Analytics:</b>", self.styles['CustomH2']))
-                    
-                    for chart in response.chart_data[:3]:  # Max 3 charts per disclosure
-                        try:
-                            # Decode base64 image
-                            image_data = base64.b64decode(chart['image_base64'])
-                            img_buffer = BytesIO(image_data)
-                            
-                            # Create ReportLab image
-                            img = RLImage(img_buffer, width=5*inch, height=3*inch)
-                            story.append(img)
-                            
-                            # Chart caption
-                            caption = Paragraph(
-                                f"<i>{chart['title']} ({chart['type'].upper()} chart)</i>",
-                                self.styles['Normal']
-                            )
-                            story.append(caption)
-                            story.append(Spacer(1, 0.1*inch))
-                        except Exception as e:
-                            logger.warning(f"Failed to add chart to PDF: {e}")
-                
-                # Add tables if available
-                if response.table_data:
-                    for table_info in response.table_data[:2]:  # Max 2 tables per disclosure
-                        try:
-                            story.append(Spacer(1, 0.2*inch))
-                            table_title = Paragraph(
-                                f"<b>{table_info['title']}</b>",
-                                self.styles['Normal']
-                            )
-                            story.append(table_title)
-                            
-                            # Build table data
-                            table_data = [table_info['headers']] + table_info['rows']
-                            
-                            # Create table
-                            t = Table(table_data, hAlign='LEFT')
-                            t.setStyle(TableStyle([
-                                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2d5016')),
-                                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-                                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                                ('FONTSIZE', (0, 0), (-1, 0), 12),
-                                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-                                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-                                ('GRID', (0, 0), (-1, -1), 1, colors.black)
-                            ]))
-                            story.append(t)
-                        except Exception as e:
-                            logger.warning(f"Failed to add table to PDF: {e}")
-                
-                story.append(Spacer(1, 0.3*inch))
-                story.append(PageBreak())
-        
-        # Build PDF
-        doc.build(story)
+
+        # Prepare template data
+        template_data = self._prepare_template_data(responses, logo_path)
+
+        # Render HTML from template
+        template = self.jinja_env.get_template('base_report.html')
+        html_content = template.render(
+            custom_css=custom_css,
+            **template_data
+        )
+
+        # Convert HTML to PDF using WeasyPrint
+        buffer = BytesIO()
+        HTML(string=html_content, base_url=str(Path(__file__).parent)).write_pdf(buffer)
         buffer.seek(0)
+
+        logger.info(f"Generated branded PDF for user {self.user.email}")
         return buffer
+
+    def _prepare_template_data(self, responses, logo_path: Optional[str]) -> dict:
+        """Prepare data for Jinja2 template"""
+        # Group responses by standard
+        standards_data = []
+        current_standard = None
+        current_disclosures = []
+
+        for response in responses:
+            disclosure = response.disclosure
+            standard = disclosure.standard
+
+            # New standard - save previous
+            if current_standard and current_standard.id != standard.id:
+                standards_data.append({
+                    'code': current_standard.code,
+                    'name': current_standard.name,
+                    'description': current_standard.description,
+                    'disclosures': current_disclosures
+                })
+                current_disclosures = []
+
+            current_standard = standard
+
+            # Prepare disclosure data
+            answer_text = response.final_answer or response.ai_answer or response.manual_answer
+            if answer_text:
+                # Convert plain text to HTML paragraphs
+                answer_html = ''.join([f'<p>{para.strip()}</p>' for para in answer_text.split('\n\n') if para.strip()])
+            else:
+                answer_html = '<p><em>No response available</em></p>'
+
+            disclosure_data = {
+                'code': disclosure.code,
+                'name': disclosure.name,
+                'requirement_text': disclosure.requirement_text[:500] + '...' if len(disclosure.requirement_text) > 500 else disclosure.requirement_text,
+                'answer': answer_html,
+                'charts': response.chart_data[:3] if response.chart_data else [],
+                'tables': response.table_data[:2] if response.table_data else []
+            }
+
+            current_disclosures.append(disclosure_data)
+
+        # Add last standard
+        if current_standard:
+            standards_data.append({
+                'code': current_standard.code,
+                'name': current_standard.name,
+                'description': current_standard.description,
+                'disclosures': current_disclosures
+            })
+
+        # If no responses, create empty state
+        if not standards_data:
+            standards_data = [{
+                'code': 'N/A',
+                'name': 'No Data Available',
+                'description': 'No ESRS responses are available for this report.',
+                'disclosures': []
+            }]
+
+        return {
+            'report_title': 'ESRS Sustainability Report',
+            'report_subtitle': 'European Sustainability Reporting Standards',
+            'report_type': 'European Sustainability Reporting Standards',
+            'company_name': self.user.email,
+            'generation_date': datetime.now().strftime('%B %d, %Y at %H:%M'),
+            'logo_path': logo_path if logo_path and os.path.exists(logo_path) else None,
+            'standards': standards_data
+        }
     
     def generate_word(self) -> BytesIO:
         """

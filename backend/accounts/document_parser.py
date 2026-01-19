@@ -29,26 +29,73 @@ def get_supported_formats_message() -> str:
     return f"Supported formats: {', '.join(formats).upper()}"
 
 
+def extract_text_from_pdf_with_ocr(file_path: str) -> str:
+    """
+    Extract text from image-based PDF using OCR
+    Converts PDF pages to images and applies OCR to each page
+    """
+    try:
+        from pdf2image import convert_from_path
+        from PIL import Image
+        import pytesseract
+
+        logger.info(f'Converting PDF to images for OCR: {file_path}')
+
+        # Convert PDF to list of images (one per page)
+        images = convert_from_path(file_path)
+
+        text_content = []
+        for page_num, image in enumerate(images, start=1):
+            logger.info(f'Running OCR on page {page_num}/{len(images)}')
+
+            # Extract text using OCR
+            text = pytesseract.image_to_string(image)
+
+            if text.strip():
+                text_content.append(f"--- Page {page_num} ---\n{text}")
+
+        if not text_content:
+            return "[No text detected in PDF using OCR]"
+
+        logger.info(f'Successfully extracted text from {len(images)} pages using OCR')
+        return '\n\n'.join(text_content)
+
+    except ImportError as e:
+        logger.error(f'OCR dependencies not available: {str(e)}')
+        raise Exception('OCR not available for image-based PDFs. Required: pdf2image and pytesseract')
+
+    except Exception as e:
+        logger.error(f'PDF OCR extraction failed: {str(e)}')
+        if 'tesseract' in str(e).lower():
+            raise Exception('Tesseract OCR engine not installed. Required for image-based PDFs.')
+        raise Exception(f'Failed to extract text from PDF using OCR: {str(e)}')
+
+
 def extract_text_from_pdf(file_path: str) -> str:
-    """Extract text from PDF file"""
+    """Extract text from PDF file (with OCR fallback for image-based PDFs)"""
     try:
         import PyPDF2
-        
+
         text_content = []
         with open(file_path, 'rb') as file:
             pdf_reader = PyPDF2.PdfReader(file)
             num_pages = len(pdf_reader.pages)
-            
+
             logger.info(f'Extracting text from PDF: {num_pages} pages')
-            
+
             for page_num in range(num_pages):
                 page = pdf_reader.pages[page_num]
                 text = page.extract_text()
                 if text.strip():
                     text_content.append(f"--- Page {page_num + 1} ---\n{text}")
-        
+
+        # If no text was extracted, try OCR (image-based PDF)
+        if not text_content:
+            logger.info('No text extracted with PyPDF2, attempting OCR on PDF pages')
+            return extract_text_from_pdf_with_ocr(file_path)
+
         return '\n\n'.join(text_content)
-    
+
     except Exception as e:
         logger.error(f'PDF extraction failed: {str(e)}')
         raise Exception(f'Failed to extract text from PDF: {str(e)}')

@@ -5,9 +5,7 @@
         <div class="logo-container">
           <img src="/logo.png" alt="Greenmind AI" class="logo" />
         </div>
-        <n-gradient-text :size="32" type="info">
-          Greenmind AI
-        </n-gradient-text>
+        <h1 class="login-title">Greenmind AI</h1>
         <p class="subtitle">Prijavite se v svoj račun</p>
       </div>
 
@@ -190,10 +188,9 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { 
+import {
   useMessage,
   NCard,
-  NGradientText,
   NTabs,
   NTabPane,
   NForm,
@@ -319,24 +316,26 @@ const handleAppleLogin = () => {
 }
 </script>
 
-<style scoped>
+<style scoped lang="scss">
+@import '../assets/sass/paper/variables';
+
 .login-container {
   min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 20px;
+  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
 }
 
 .login-card {
   width: 100%;
   max-width: 480px;
-  backdrop-filter: blur(20px);
-  background: rgba(255, 255, 255, 0.05);
-  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 24px;
-  padding: 20px;
+  background: $white-background-color;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.1);
+  border-radius: 20px;
+  padding: 40px;
+  border: none;
 }
 
 .login-header {
@@ -353,11 +352,18 @@ const handleAppleLogin = () => {
   height: 80px;
   border-radius: 16px;
   object-fit: cover;
-  box-shadow: 0 4px 12px rgba(84, 217, 68, 0.3);
+  box-shadow: 0 4px 12px rgba($success-color, 0.3);
+}
+
+.login-title {
+  font-size: 32px;
+  font-weight: 300;
+  color: $font-color;
+  margin: 16px 0 8px 0;
 }
 
 .subtitle {
-  color: rgba(255, 255, 255, 0.7);
+  color: $dark-gray;
   margin-top: 8px;
   font-size: 16px;
 }
@@ -376,16 +382,23 @@ const handleAppleLogin = () => {
 .oauth-btn {
   font-weight: 500;
   transition: all 0.3s ease;
+  border: 1px solid $medium-gray;
+  background: $white-background-color;
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  }
 }
 
 .google-btn:hover {
-  transform: translateY(-2px);
+  border-color: #4285f4;
   box-shadow: 0 4px 12px rgba(66, 133, 244, 0.3);
 }
 
 .apple-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(255, 255, 255, 0.2);
+  border-color: $font-color;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
 /* Mobile Responsive Styles */

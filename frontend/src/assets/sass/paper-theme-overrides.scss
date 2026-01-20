@@ -81,7 +81,7 @@ body {
         font-weight: 600;
         text-transform: uppercase;
         padding: 10px 10px 10px 15px !important;
-        margin: 10px 0;
+        margin: 5px 0 !important;
         position: relative;
 
         // Remove any default backgrounds and borders
@@ -152,6 +152,27 @@ body {
       .n-menu-item-content__extra {
         color: $white-color !important;
       }
+
+      // Menu item group styling (for ESRS submenu groups)
+      .n-menu-item-group {
+        margin: 5px 0 !important;
+
+        .n-menu-item-group-title {
+          padding: 10px 15px !important;
+          margin: 0 !important;
+          color: rgba(255, 255, 255, 0.5) !important;
+          font-size: 11px !important;
+          font-weight: 600 !important;
+        }
+      }
+
+      // Ensure consistent spacing for all menu types
+      .n-menu-item,
+      .n-submenu,
+      .n-menu-item-group {
+        margin-top: 5px !important;
+        margin-bottom: 5px !important;
+      }
     }
 
     // Nuclear option: remove all Naive UI menu backgrounds globally in sidebar
@@ -196,7 +217,41 @@ body {
   // Content area styling
   .n-layout-content {
     background: $smoke-bg !important;
-    min-height: calc(100vh - 64px);
+    min-height: calc(100vh - 64px - 60px); // Subtract header and footer
+  }
+
+  // Footer styling
+  .n-layout-footer {
+    background: $white-background-color !important;
+    border-top: 1px solid rgba(0, 0, 0, 0.06);
+
+    .footer-content {
+      color: $font-color;
+      font-size: 14px;
+
+      .copyright {
+        color: $dark-gray;
+
+        a {
+          color: $success-color;
+          text-decoration: none;
+          font-weight: 600;
+
+          &:hover {
+            color: darken($success-color, 10%);
+          }
+        }
+      }
+
+      .footer-links a {
+        color: $dark-gray;
+        text-decoration: none;
+
+        &:hover {
+          color: $success-color;
+        }
+      }
+    }
   }
 }
 
@@ -351,16 +406,112 @@ body {
 
 // Style inputs with Paper Dashboard look
 .n-input {
-  .n-input__input-el {
-    border-radius: 6px;
-    border: 1px solid $medium-gray;
-    background: $gray-input-bg;
-    color: $font-color;
+  border-radius: 6px !important;
+  border: 1px solid $medium-gray !important;
+  background: $white-background-color !important;
 
-    &:focus {
-      border-color: $success-color;
-      box-shadow: none;
+  &.n-input--focus {
+    border-color: $success-color !important;
+    box-shadow: none !important;
+  }
+
+  .n-input-wrapper {
+    padding: 0 !important;
+  }
+
+  .n-input__input-el {
+    background: transparent !important;
+    color: $font-color !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 10px 12px !important;
+  }
+
+  .n-input__prefix,
+  .n-input__suffix {
+    background: transparent !important;
+    padding: 0 12px !important;
+  }
+}
+
+// Input Number styling - fix vertical button layout
+.n-input-number {
+  border-radius: 6px !important;
+  background: $white-background-color !important;
+  border: 1px solid $medium-gray !important;
+
+  .n-input-number-input,
+  .n-input-number-input input,
+  input {
+    color: $font-color !important;
+    background: transparent !important;
+  }
+
+  .n-input__input-el {
+    color: $font-color !important;
+    background: transparent !important;
+  }
+
+  // Suffix contains the button group
+  .n-input__suffix {
+    display: flex !important;
+    flex-direction: column !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    height: 100% !important;
+  }
+
+  // Button group wrapper
+  .n-input-number-button-group {
+    display: flex !important;
+    flex-direction: column !important;
+    height: 100% !important;
+  }
+
+  // Individual buttons - increase is on top, decrease on bottom
+  .n-input-number-button {
+    background: rgba(0, 0, 0, 0.05) !important;
+    color: $font-color !important;
+    border: none !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    flex: 1 !important;
+    min-height: 14px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+
+    &:hover {
+      background: rgba($success-color, 0.15) !important;
+      color: $success-color !important;
     }
+
+    &:active {
+      background: rgba($success-color, 0.25) !important;
+    }
+
+    // Icons inside buttons
+    svg,
+    .n-base-icon,
+    .n-icon {
+      color: $font-color !important;
+      opacity: 1 !important;
+      visibility: visible !important;
+      display: block !important;
+      width: 12px !important;
+      height: 12px !important;
+    }
+  }
+
+  // Separate styling for increase and decrease if needed
+  .n-input-number-button--increase {
+    border-bottom: 1px solid rgba(0, 0, 0, 0.1) !important;
+  }
+
+  .n-input-number-button--decrease {
+    // Bottom button
   }
 }
 
@@ -395,6 +546,69 @@ body {
   text-transform: uppercase;
   font-size: 11px;
   padding: 4px 12px;
+}
+
+// Blockquote styling
+.n-blockquote,
+blockquote {
+  color: $font-color !important;
+  background: rgba(0, 0, 0, 0.02) !important;
+  border-left: 3px solid $success-color !important;
+  padding: 10px 15px !important;
+  margin: 10px 0 !important;
+  font-style: italic;
+}
+
+// Text color fix
+.n-text {
+  color: $font-color !important;
+}
+
+// Alert styling - Paper Dashboard style (very subtle, integrated within cards)
+.n-alert {
+  border-radius: 6px !important;
+  border: none !important;
+  background-color: rgba(0, 0, 0, 0.03) !important;
+  box-shadow: none !important;
+  padding: 12px !important;
+
+  // Hide all alert icons globally
+  .n-alert__icon {
+    display: none !important;
+  }
+
+  &.n-alert--info-type {
+    background-color: rgba($info-color, 0.08) !important;
+    border-left: 2px solid $info-color !important;
+  }
+
+  &.n-alert--success-type {
+    background-color: rgba($success-color, 0.08) !important;
+    border-left: 2px solid $success-color !important;
+  }
+
+  &.n-alert--warning-type {
+    background-color: rgba($warning-color, 0.08) !important;
+    border-left: 2px solid $warning-color !important;
+  }
+
+  &.n-alert--error-type {
+    background-color: rgba($danger-color, 0.08) !important;
+    border-left: 2px solid $danger-color !important;
+  }
+
+  .n-alert-body {
+    padding: 0 !important;
+  }
+
+  .n-alert__content {
+    color: $font-color !important;
+  }
+
+  // Also hide icon element
+  .n-base-icon {
+    display: none !important;
+  }
 }
 
 // Smooth transitions (exclude cards)

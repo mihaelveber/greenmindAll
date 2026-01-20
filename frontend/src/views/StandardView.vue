@@ -1,75 +1,7 @@
 <template>
   <div class="esrs-container">
-    <!-- Mobile Header with Menu Button -->
-    <div class="mobile-header">
-      <n-button text @click="showMobileMenu = true" size="large">
-        <template #icon>
-          <n-icon :component="MenuOutline" size="28" />
-        </template>
-      </n-button>
-      <n-h3 style="margin: 0; flex: 1; text-align: center;">{{ standardMetadata.icon }} {{ standardMetadata.name }}</n-h3>
-      <n-button text @click="$router.push('/dashboard')" size="large">
-        <template #icon>
-          <n-icon :component="ArrowBackOutline" size="24" />
-        </template>
-      </n-button>
-    </div>
-
-    <!-- Mobile Drawer Menu -->
-    <n-drawer v-model:show="showMobileMenu" :width="280" placement="left">
-      <n-drawer-content :title="`${standardMetadata.icon} ${standardMetadata.name}`" :native-scrollbar="false">
-        <n-spin :show="loading">
-          <div v-for="category in categories" :key="category.id" class="category-section">
-            <div class="category-header">
-              <n-text strong>{{ category.name }} ({{ category.code }})</n-text>
-            </div>
-            
-            <n-menu
-              :value="selectedStandardId?.toString()"
-              :options="getStandardsForCategory(category.id)"
-              @update:value="handleStandardSelectMobile"
-            />
-          </div>
-        </n-spin>
-      </n-drawer-content>
-    </n-drawer>
-
-    <n-layout has-sider>
-      <!-- Desktop Sidebar with ESRS standards -->
-      <n-layout-sider
-        bordered
-        :width="300"
-        :native-scrollbar="false"
-        class="esrs-sidebar desktop-only"
-      >
-        <div class="sidebar-header">
-          <n-space align="center" :size="12">
-            <n-button text @click="$router.push('/dashboard')" size="large">
-              <template #icon>
-                <n-icon :component="ArrowBackOutline" size="24" />
-              </template>
-            </n-button>
-            <n-h3 style="margin: 0;">{{ standardMetadata.icon }} {{ standardMetadata.name }}</n-h3>
-          </n-space>
-        </div>
-
-        <n-spin :show="loading">
-          <div v-for="category in categories" :key="category.id" class="category-section">
-            <div class="category-header">
-              <n-text strong>{{ category.name }} ({{ category.code }})</n-text>
-            </div>
-            
-            <n-menu
-              :value="selectedStandardId?.toString()"
-              :options="getStandardsForCategory(category.id)"
-              @update:value="handleStandardSelect"
-            />
-          </div>
-        </n-spin>
-      </n-layout-sider>
-
-      <!-- Main content area -->
-      <n-layout-content content-style="padding: 24px;">
+    <!-- Content area - standards are in main layout sidebar -->
+    <div>
         <n-card v-if="!selectedStandard" :bordered="false">
           <n-empty
             :description="`Select a ${standardMetadata.name} standard from the sidebar to view requirements`"
@@ -169,7 +101,7 @@
                     <!-- AI Model Selection -->
                     <n-alert type="success" style="margin-bottom: 16px;">
                       <template #header>
-                        <n-text strong>🤖 AI Model</n-text>
+                        <n-text strong>AI Model</n-text>
                       </template>
                       <n-space align="center" :size="12">
                         <n-text depth="3">Select AI model:</n-text>
@@ -195,7 +127,7 @@
                     <n-alert type="info" style="margin-bottom: 16px;">
                       <template #header>
                         <n-space align="center" justify="space-between">
-                          <n-text strong>🎯 AI Creativity Level</n-text>
+                          <n-text strong>AI Creativity Level</n-text>
                           <n-tag 
                             :type="(aiTemperatures[disclosure.id] ?? 0.2) <= 0.3 ? 'info' : (aiTemperatures[disclosure.id] ?? 0.2) <= 0.7 ? 'warning' : 'error'" 
                             size="small"
@@ -205,28 +137,41 @@
                         </n-space>
                       </template>
                       <n-space vertical :size="16">
-                        <n-space align="center" :size="12">
-                          <n-button size="small" :disabled="!canEditDisclosure(disclosure.code)" @click="aiTemperatures[disclosure.id] = 0.0; updateAITemperature(disclosure.id)">0.0</n-button>
-                          <n-button size="small" :disabled="!canEditDisclosure(disclosure.code)" @click="aiTemperatures[disclosure.id] = 0.2; updateAITemperature(disclosure.id)">0.2</n-button>
-                          <n-button size="small" :disabled="!canEditDisclosure(disclosure.code)" @click="aiTemperatures[disclosure.id] = 0.5; updateAITemperature(disclosure.id)">0.5</n-button>
-                          <n-button size="small" :disabled="!canEditDisclosure(disclosure.code)" @click="aiTemperatures[disclosure.id] = 0.7; updateAITemperature(disclosure.id)">0.7</n-button>
-                          <n-button size="small" :disabled="!canEditDisclosure(disclosure.code)" @click="aiTemperatures[disclosure.id] = 1.0; updateAITemperature(disclosure.id)">1.0</n-button>
-                          <n-input-number 
-                            v-model:value="aiTemperatures[disclosure.id]"
-                            :min="0"
-                            :max="1"
-                            :step="0.1"
+                        <n-space align="center" :size="12" style="flex-wrap: wrap;">
+                          <n-text depth="3" style="font-size: 11px;">Quick set:</n-text>
+                          <n-button size="tiny" :disabled="!canEditDisclosure(disclosure.code)" @click="aiTemperatures[disclosure.id] = 0.0; updateAITemperature(disclosure.id)">0.0</n-button>
+                          <n-button size="tiny" :disabled="!canEditDisclosure(disclosure.code)" @click="aiTemperatures[disclosure.id] = 0.2; updateAITemperature(disclosure.id)">0.2</n-button>
+                          <n-button size="tiny" :disabled="!canEditDisclosure(disclosure.code)" @click="aiTemperatures[disclosure.id] = 0.5; updateAITemperature(disclosure.id)">0.5</n-button>
+                          <n-button size="tiny" :disabled="!canEditDisclosure(disclosure.code)" @click="aiTemperatures[disclosure.id] = 0.7; updateAITemperature(disclosure.id)">0.7</n-button>
+                          <n-button size="tiny" :disabled="!canEditDisclosure(disclosure.code)" @click="aiTemperatures[disclosure.id] = 1.0; updateAITemperature(disclosure.id)">1.0</n-button>
+                          <n-button
                             size="small"
-                            style="width: 100px;"
-                            :disabled="!canEditDisclosure(disclosure.code)"
-                            @update:value="updateAITemperature(disclosure.id)"
-                          />
+                            :disabled="!canEditDisclosure(disclosure.code) || (aiTemperatures[disclosure.id] ?? 0.2) <= 0.0"
+                            @click="aiTemperatures[disclosure.id] = Math.max(0, (aiTemperatures[disclosure.id] ?? 0.2) - 0.1); updateAITemperature(disclosure.id)"
+                          >
+                            <template #icon>
+                              <n-icon :component="RemoveOutline" />
+                            </template>
+                            Decrease
+                          </n-button>
+                          <n-text strong style="min-width: 60px; text-align: center;">{{ (aiTemperatures[disclosure.id] ?? 0.2).toFixed(1) }}</n-text>
+                          <n-button
+                            size="small"
+                            type="primary"
+                            :disabled="!canEditDisclosure(disclosure.code) || (aiTemperatures[disclosure.id] ?? 0.2) >= 1.0"
+                            @click="aiTemperatures[disclosure.id] = Math.min(1, (aiTemperatures[disclosure.id] ?? 0.2) + 0.1); updateAITemperature(disclosure.id)"
+                          >
+                            <template #icon>
+                              <n-icon :component="AddOutline" />
+                            </template>
+                            Increase
+                          </n-button>
                         </n-space>
                         <n-text depth="3" style="font-size: 12px;">
-                          <strong>Current: {{ (aiTemperatures[disclosure.id] ?? 0.2).toFixed(1) }}</strong> - 
-                          {{ (aiTemperatures[disclosure.id] ?? 0.2) <= 0.3 
-                            ? '📊 Factual & precise - best for data-heavy disclosures' 
-                            : (aiTemperatures[disclosure.id] ?? 0.2) <= 0.7 
+                          <strong>Current: {{ (aiTemperatures[disclosure.id] ?? 0.2).toFixed(1) }}</strong> -
+                          {{ (aiTemperatures[disclosure.id] ?? 0.2) <= 0.3
+                            ? '📊 Factual & precise - best for data-heavy disclosures'
+                            : (aiTemperatures[disclosure.id] ?? 0.2) <= 0.7
                             ? '🎨 Balanced creativity - good for most cases'
                             : '🚀 Creative - may hallucinate, use with caution' }}
                         </n-text>
@@ -448,24 +393,25 @@
                       <div style="white-space: pre-wrap; margin-top: 8px;">{{ disclosureResponses[disclosure.id].notes }}</div>
                     </div>
 
-                    <!-- Linked Documents -->
-                    <div v-if="linkedDocuments[disclosure.id]?.length > 0" class="linked-docs-section">
-                      <n-text strong>Linked Documents ({{ linkedDocuments[disclosure.id].length }}):</n-text>
-                      <n-space vertical :size="8" style="margin-top: 8px;">
-                        <n-space v-for="evidence in linkedDocuments[disclosure.id]" :key="evidence.id" justify="space-between" style="padding: 8px; background: rgba(255,255,255,0.05); border-radius: 4px;">
-                          <n-space>
-                            <n-icon :component="DocumentOutline" size="20" :color="evidence.document.is_global ? '#18a0fb' : undefined" />
-                            <n-text>{{ evidence.document.file_name }}</n-text>
-                            <n-tag v-if="evidence.document.is_global" type="info" size="tiny" :bordered="false">🌐</n-tag>
+                    <!-- Linked Documents - Collapsible -->
+                    <n-collapse v-if="linkedDocuments[disclosure.id]?.length > 0" class="linked-docs-section">
+                      <n-collapse-item :title="`Linked Documents (${linkedDocuments[disclosure.id].length})`">
+                        <n-space vertical :size="8">
+                          <n-space v-for="evidence in linkedDocuments[disclosure.id]" :key="evidence.id" justify="space-between" style="padding: 8px; background: rgba(0,0,0,0.02); border-radius: 4px;">
+                            <n-space>
+                              <n-icon :component="DocumentOutline" size="20" :color="evidence.document.is_global ? '#18a0fb' : undefined" />
+                              <n-text>{{ evidence.document.file_name }}</n-text>
+                              <n-tag v-if="evidence.document.is_global" type="info" size="tiny" :bordered="false">🌐</n-tag>
+                            </n-space>
+                            <n-button text :type="evidence.document.is_global ? 'warning' : 'error'" size="small" @click="unlinkDocument(evidence.id, disclosure.id)">
+                              <template #icon>
+                                <n-icon :component="TrashOutline" />
+                              </template>
+                            </n-button>
                           </n-space>
-                          <n-button text :type="evidence.document.is_global ? 'warning' : 'error'" size="small" @click="unlinkDocument(evidence.id, disclosure.id)">
-                            <template #icon>
-                              <n-icon :component="TrashOutline" />
-                            </template>
-                          </n-button>
                         </n-space>
-                      </n-space>
-                    </div>
+                      </n-collapse-item>
+                    </n-collapse>
 
                     <n-divider />
 
@@ -745,24 +691,25 @@
                       <div style="white-space: pre-wrap; margin-top: 8px;">{{ disclosureResponses[subDisclosure.id].notes }}</div>
                     </div>
 
-                    <!-- Linked Documents -->
-                    <div v-if="linkedDocuments[subDisclosure.id]?.length > 0" class="linked-docs-section">
-                      <n-text strong>Linked Documents ({{ linkedDocuments[subDisclosure.id].length }}):</n-text>
-                      <n-space vertical :size="8" style="margin-top: 8px;">
-                        <n-space v-for="evidence in linkedDocuments[subDisclosure.id]" :key="evidence.id" justify="space-between" style="padding: 8px; background: rgba(255,255,255,0.05); border-radius: 4px;">
-                          <n-space>
-                            <n-icon :component="DocumentOutline" size="20" :color="evidence.document.is_global ? '#18a0fb' : undefined" />
-                            <n-text>{{ evidence.document.file_name }}</n-text>
-                            <n-tag v-if="evidence.document.is_global" type="info" size="tiny" :bordered="false">🌐</n-tag>
+                    <!-- Linked Documents - Collapsible -->
+                    <n-collapse v-if="linkedDocuments[subDisclosure.id]?.length > 0" class="linked-docs-section">
+                      <n-collapse-item :title="`Linked Documents (${linkedDocuments[subDisclosure.id].length})`">
+                        <n-space vertical :size="8">
+                          <n-space v-for="evidence in linkedDocuments[subDisclosure.id]" :key="evidence.id" justify="space-between" style="padding: 8px; background: rgba(0,0,0,0.02); border-radius: 4px;">
+                            <n-space>
+                              <n-icon :component="DocumentOutline" size="20" :color="evidence.document.is_global ? '#18a0fb' : undefined" />
+                              <n-text>{{ evidence.document.file_name }}</n-text>
+                              <n-tag v-if="evidence.document.is_global" type="info" size="tiny" :bordered="false">🌐</n-tag>
+                            </n-space>
+                            <n-button text :type="evidence.document.is_global ? 'warning' : 'error'" size="small" @click="unlinkDocument(evidence.id, subDisclosure.id)">
+                              <template #icon>
+                                <n-icon :component="TrashOutline" />
+                              </template>
+                            </n-button>
                           </n-space>
-                          <n-button text :type="evidence.document.is_global ? 'warning' : 'error'" size="small" @click="unlinkDocument(evidence.id, subDisclosure.id)">
-                            <template #icon>
-                              <n-icon :component="TrashOutline" />
-                            </template>
-                          </n-button>
                         </n-space>
-                      </n-space>
-                    </div>
+                      </n-collapse-item>
+                    </n-collapse>
 
                     <n-divider />
 
@@ -902,8 +849,7 @@
             <n-empty v-else description="No disclosure requirements found" />
           </n-spin>
         </n-card>
-      </n-layout-content>
-    </n-layout>
+    </div>
 
     <!-- Add Notes Modal -->
     <n-modal v-model:show="showNotesModal" preset="dialog" title="Add Notes" style="width: 600px;">
@@ -1496,6 +1442,7 @@ import {
   BookOutline,
   GlobeOutline,
   AddOutline,
+  RemoveOutline,
   LinkOutline,
   CreateSharp,
   StatsChartOutline,
@@ -3182,22 +3129,32 @@ const copyToClipboard = async (text: string) => {
 
 onMounted(async () => {
   await Promise.all([
-    loadCategories(), 
+    loadCategories(),
     loadStandards(),
     loadUserRole(),
     loadTeamMembers(),
     loadAssignments(),
     loadCurrentUser()
   ])
-  
-  // Check if category query parameter exists and auto-select first standard
-  const categoryId = route.query.category
-  if (categoryId) {
-    const catId = parseInt(categoryId as string)
-    const categoryStandards = standards.value.filter(s => s.category.id === catId)
-    if (categoryStandards.length > 0) {
-      // Auto-select first standard in the category
-      handleStandardSelect(categoryStandards[0].id.toString())
+
+  // Check if standard query parameter exists and auto-select that standard
+  const standardId = route.query.standard
+  if (standardId) {
+    const stdId = parseInt(standardId as string)
+    const standard = standards.value.find(s => s.id === stdId)
+    if (standard) {
+      handleStandardSelect(standard.id.toString())
+    }
+  } else {
+    // Check if category query parameter exists and auto-select first standard
+    const categoryId = route.query.category
+    if (categoryId) {
+      const catId = parseInt(categoryId as string)
+      const categoryStandards = standards.value.filter(s => s.category.id === catId)
+      if (categoryStandards.length > 0) {
+        // Auto-select first standard in the category
+        handleStandardSelect(categoryStandards[0].id.toString())
+      }
     }
   }
 })
@@ -3209,6 +3166,33 @@ watch(standardType, async () => {
   await Promise.all([loadCategories(), loadStandards()])
 })
 
+// Watch for query parameter changes to auto-select standard
+watch(() => route.query.standard, async (newStandardId) => {
+  if (newStandardId) {
+    const stdId = parseInt(newStandardId as string)
+    // Wait for standards to load if not loaded yet
+    if (standards.value.length === 0) {
+      await loadStandards()
+    }
+    const standard = standards.value.find(s => s.id === stdId)
+    if (standard && selectedStandardId.value !== stdId) {
+      handleStandardSelect(standard.id.toString())
+    }
+  }
+})
+
+// Watch for standards array changes to handle delayed loading
+watch(() => standards.value.length, async () => {
+  const standardId = route.query.standard
+  if (standardId && standards.value.length > 0) {
+    const stdId = parseInt(standardId as string)
+    const standard = standards.value.find(s => s.id === stdId)
+    if (standard && selectedStandardId.value !== stdId) {
+      handleStandardSelect(standard.id.toString())
+    }
+  }
+})
+
 onBeforeUnmount(() => {
   // Clear all polling intervals when component unmounts
   Object.values(pollingIntervals.value).forEach(interval => clearInterval(interval))
@@ -3218,8 +3202,8 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .esrs-container {
-  height: 100vh;
-  overflow: hidden;
+  min-height: 100vh;
+  overflow-y: auto;
 }
 
 .esrs-sidebar {

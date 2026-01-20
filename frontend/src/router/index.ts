@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '../stores/auth.store'
 import LoginView from '../views/LoginView.vue'
+import DashboardLayout from '../layout/DashboardLayout.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -16,12 +17,6 @@ const router = createRouter({
       meta: { requiresGuest: true }
     },
     {
-      path: '/dashboard',
-      name: 'dashboard',
-      component: () => import('../views/DashboardView.vue'),
-      meta: { requiresAuth: true }
-    },
-    {
       path: '/oauth/callback',
       name: 'oauth-callback',
       component: () => import('../views/OAuthCallbackView.vue')
@@ -32,27 +27,37 @@ const router = createRouter({
       component: () => import('../views/WizardView.vue'),
       meta: { requiresAuth: true }
     },
+    // All authenticated routes use DashboardLayout wrapper
     {
-      path: '/documents',
-      name: 'documents',
-      component: () => import('../views/DocumentsView.vue'),
-      meta: { requiresAuth: true }
-    },
-    {
-      path: '/standards/:standardType',
-      name: 'standards',
-      component: () => import('../views/StandardView.vue'),
-      meta: { requiresAuth: true }
+      path: '/',
+      component: DashboardLayout,
+      meta: { requiresAuth: true },
+      children: [
+        {
+          path: 'dashboard',
+          name: 'dashboard',
+          component: () => import('../views/DashboardContentView.vue')
+        },
+        {
+          path: 'documents',
+          name: 'documents',
+          component: () => import('../views/DocumentsView.vue')
+        },
+        {
+          path: 'standards/:standardType',
+          name: 'standards',
+          component: () => import('../views/StandardView.vue')
+        },
+        {
+          path: 'team',
+          name: 'team',
+          component: () => import('../views/UserManagementView.vue')
+        }
+      ]
     },
     {
       path: '/esrs',
       redirect: '/standards/ESRS'
-    },
-    {
-      path: '/team',
-      name: 'team',
-      component: () => import('../views/UserManagementView.vue'),
-      meta: { requiresAuth: true }
     }
   ]
 })

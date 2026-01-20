@@ -135,7 +135,7 @@
                     <n-alert type="info" style="margin-bottom: 16px;">
                       <template #header>
                         <n-space align="center" justify="space-between">
-                          <n-text strong>🎯 AI Creativity Level</n-text>
+                          <n-text strong>AI Creativity Level</n-text>
                           <n-tag 
                             :type="(aiTemperatures[disclosure.id] ?? 0.2) <= 0.3 ? 'info' : (aiTemperatures[disclosure.id] ?? 0.2) <= 0.7 ? 'warning' : 'error'" 
                             size="small"
@@ -429,7 +429,7 @@
                       <template #header>
                         <n-space align="center">
                           <n-icon :component="SparklesOutline" size="20" />
-                          <n-text strong>🤖 AI Model</n-text>
+                          <n-text strong>AI Model</n-text>
                         </n-space>
                       </template>
                       <n-space vertical :size="12">

@@ -79,9 +79,9 @@
                   :rail-color="'rgba(0, 0, 0, 0.1)'"
                   :style="{ width: '140px', height: '140px', margin: '0 auto' }"
                 >
-                  <div style="text-align: center;">
-                    <div style="font-size: 32px; font-weight: 300; color: #333;">{{ standard.completion_percentage.toFixed(0) }}%</div>
-                    <div style="font-size: 12px; color: #9A9A9A; margin-top: 4px;">{{ standard.answered_requirements }}/{{ standard.total_requirements }}</div>
+                  <div style="text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%;">
+                    <div style="font-size: 32px; font-weight: 300; color: #333; line-height: 1;">{{ standard.completion_percentage.toFixed(0) }}%</div>
+                    <div style="font-size: 12px; color: #9A9A9A; margin-top: 6px; line-height: 1;">{{ standard.answered_requirements }}/{{ standard.total_requirements }}</div>
                   </div>
                 </n-progress>
                 <div style="margin-top: 16px;">

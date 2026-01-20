@@ -1,6 +1,6 @@
 <template>
   <div class="user-management">
-    <n-page-header class="page-header" @back="() => $router.push('/dashboard')">
+    <n-page-header class="page-header">
       <template #title>
         <h1>👥 Team Management</h1>
       </template>
@@ -12,23 +12,23 @@
     <!-- Statistics Cards -->
     <n-grid x-gap="16" y-gap="16" :cols="4" style="margin-bottom: 24px">
       <n-gi>
-        <n-card :bordered="false" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%)">
+        <n-card :bordered="false" style="background: linear-gradient(135deg, #7A9E9F 0%, #427C89 100%)">
           <n-statistic label="Total Members" :value="teamMembers.length">
             <template #prefix>👥</template>
           </n-statistic>
         </n-card>
       </n-gi>
       <n-gi>
-        <n-card :bordered="false" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%)">
+        <n-card :bordered="false" style="background: linear-gradient(135deg, #68B3C8 0%, #3091B2 100%)">
           <n-statistic label="Active Assignments" :value="assignments.length">
             <template #prefix>📋</template>
           </n-statistic>
         </n-card>
       </n-gi>
       <n-gi>
-        <n-card :bordered="false" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)">
-          <n-statistic 
-            label="Completion Rate" 
+        <n-card :bordered="false" style="background: linear-gradient(135deg, #41B883 0%, #229863 100%)">
+          <n-statistic
+            label="Completion Rate"
             :value="completionRate"
             suffix="%"
           >
@@ -37,7 +37,7 @@
         </n-card>
       </n-gi>
       <n-gi>
-        <n-card :bordered="false" style="background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)">
+        <n-card :bordered="false" style="background: linear-gradient(135deg, #F3BB45 0%, #BB992F 100%)">
           <n-statistic label="Pending Invites" :value="pendingInvitations.length">
             <template #prefix>📧</template>
           </n-statistic>
@@ -807,10 +807,11 @@ onMounted(() => {
 })
 </script>
 
-<style scoped>
+<style scoped lang="scss">
+@import '../assets/sass/paper/variables';
+
 .user-management {
-  padding: 20px;
-  max-width: 1400px;
+  max-width: 1600px;
   margin: 0 auto;
 }
 
@@ -824,6 +825,97 @@ onMounted(() => {
 
 h1 {
   font-size: 32px;
+  font-weight: 300;
+  color: $font-color;
   margin: 0;
+}
+
+// Style cards
+:deep(.n-card) {
+  background: $white-background-color;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.1);
+  border-radius: 20px;
+  border: none;
+
+  .n-card-header {
+    padding: 20px 24px;
+    border-bottom: 1px solid $medium-gray;
+
+    .n-card-header__main {
+      font-size: 18px;
+      font-weight: 300;
+      color: $font-color;
+    }
+  }
+
+  .n-card__content {
+    padding: 20px 24px;
+  }
+}
+
+// Style statistic cards with gradients
+:deep(.n-statistic) {
+  .n-statistic-value {
+    color: $white-color;
+    font-size: 32px;
+    font-weight: 300;
+  }
+
+  .n-statistic-value__prefix,
+  .n-statistic-value__suffix {
+    color: $white-color;
+  }
+
+  .n-statistic__label {
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 14px;
+    font-weight: 500;
+  }
+}
+
+// Style data tables
+:deep(.n-data-table) {
+  .n-data-table-th {
+    background: $smoke-bg;
+    color: $font-color;
+    font-weight: 600;
+    font-size: 12px;
+    text-transform: uppercase;
+    padding: 12px 16px;
+  }
+
+  .n-data-table-td {
+    padding: 12px 16px;
+    border-bottom: 1px solid $medium-gray;
+  }
+
+  .n-data-table-tr:hover {
+    background: rgba(0, 0, 0, 0.02);
+  }
+}
+
+// Style tabs
+:deep(.n-tabs) {
+  .n-tabs-nav {
+    padding-left: 0;
+  }
+
+  .n-tabs-tab {
+    font-size: 14px;
+    font-weight: 600;
+    padding: 12px 20px;
+  }
+}
+
+// Style timeline
+:deep(.n-timeline) {
+  .n-timeline-item-timeline__line {
+    background: $medium-gray;
+  }
+
+  .n-timeline-item-content__title {
+    font-weight: 600;
+    color: $font-color;
+  }
 }
 </style>

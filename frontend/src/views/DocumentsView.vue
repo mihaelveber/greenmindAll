@@ -1,33 +1,34 @@
 <template>
   <div class="documents-container">
+    <n-page-header class="page-header">
+      <template #title>
+        <h1>📄 Documents</h1>
+      </template>
+      <template #subtitle>
+        Manage your company documents and website content
+      </template>
+      <template #extra>
+        <n-space :size="12">
+          <n-button type="success" @click="showAddWebsiteModal = true">
+            <template #icon>
+              <n-icon :component="GlobeOutline" />
+            </template>
+            Add Website
+          </n-button>
+          <n-button type="primary" @click="showUploadModal = true">
+            <template #icon>
+              <n-icon :component="AddOutline" />
+            </template>
+            Add Document
+          </n-button>
+        </n-space>
+      </template>
+    </n-page-header>
+
     <n-card :bordered="false">
       <template #header>
         <div class="header-section">
-          <n-space align="center" :size="16">
-            <n-button text @click="$router.push('/dashboard')" size="large">
-              <template #icon>
-                <n-icon :component="ArrowBackOutline" size="24" />
-              </template>
-            </n-button>
-            <div>
-              <n-h2 style="margin: 0;">📄 Documents</n-h2>
-              <p class="subtitle" style="margin: 4px 0 0 0;">Manage your company documents</p>
-            </div>
-          </n-space>
-          <n-space :size="12">
-            <n-button type="success" size="large" @click="showAddWebsiteModal = true">
-              <template #icon>
-                <n-icon :component="GlobeOutline" />
-              </template>
-              Add Website
-            </n-button>
-            <n-button type="primary" size="large" @click="showUploadModal = true">
-              <template #icon>
-                <n-icon :component="AddOutline" />
-              </template>
-              Add Document
-            </n-button>
-          </n-space>
+          <n-text strong style="font-size: 16px;">All Documents</n-text>
         </div>
       </template>
 
@@ -197,11 +198,12 @@
             </n-thing>
 
             <template #suffix>
-              <n-space>
+              <n-space :size="8">
                 <!-- Only show "Make Global" button if document is NOT global -->
                 <n-button
                   v-if="!doc.is_global"
                   text
+                  size="small"
                   type="success"
                   @click="toggleGlobalStatus(doc)"
                   title="Mark as global - will auto-link to all questions"
@@ -209,27 +211,28 @@
                   <template #icon>
                     <n-icon :component="GlobeOutline" />
                   </template>
-                  Make Global
                 </n-button>
                 <n-button
                   text
+                  size="small"
                   type="info"
                   @click="openPreview(doc)"
+                  title="Preview"
                 >
                   <template #icon>
                     <n-icon :component="EyeOutline" />
                   </template>
-                  Preview
                 </n-button>
                 <n-button
                   text
+                  size="small"
                   type="success"
                   @click="downloadDocument(doc)"
+                  title="Download"
                 >
                   <template #icon>
                     <n-icon :component="DownloadOutline" />
                   </template>
-                  Download
                 </n-button>
                 <n-popconfirm
                   @positive-click="deleteDocument(doc.id)"
@@ -239,12 +242,13 @@
                   <template #trigger>
                     <n-button
                       text
+                      size="small"
                       type="error"
+                      title="Delete"
                     >
                       <template #icon>
                         <n-icon :component="TrashOutline" />
                       </template>
-                      Delete
                     </n-button>
                   </template>
                   Are you sure you want to delete "{{ doc.file_name }}"?
@@ -534,7 +538,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import { 
+import {
   useMessage,
   NCard,
   NH2,
@@ -562,6 +566,7 @@ import {
   NFormItem,
   NTooltip,
   NCheckbox,
+  NPageHeader,
   type UploadFileInfo,
   type UploadCustomRequestOptions
 } from 'naive-ui'
@@ -836,23 +841,37 @@ onMounted(() => {
 })
 </script>
 
-<style scoped>
+<style scoped lang="scss">
+@import '../assets/sass/paper/variables';
+
 .documents-container {
-  padding: 24px;
-  max-width: 1200px;
+  max-width: 1600px;
   margin: 0 auto;
+}
+
+.page-header {
+  margin-bottom: 30px;
 }
 
 .header-section {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
 }
 
 .subtitle {
-  color: rgba(255, 255, 255, 0.6);
+  color: $dark-gray;
   margin-top: 4px;
   font-size: 14px;
+}
+
+h1 {
+  font-size: 32px;
+  font-weight: 300;
+  color: $font-color;
+  margin: 0;
 }
 
 .empty-state {
@@ -865,7 +884,67 @@ onMounted(() => {
 }
 
 .upload-hint {
-  color: rgba(255, 255, 255, 0.6);
+  color: $dark-gray;
   margin-top: 12px;
+}
+
+// Override card header styling for documents page
+:deep(.n-card-header) {
+  padding: 20px 24px;
+  border-bottom: 1px solid $medium-gray;
+
+  .n-h2, .n-h3 {
+    color: $font-color;
+    font-weight: 300;
+  }
+}
+
+// Style website document cards
+:deep(.n-card) {
+  background: $white-background-color;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.1);
+  border-radius: 20px;
+  border: none;
+}
+
+// Override list styling
+:deep(.n-list) {
+  background: transparent;
+  border-radius: 12px;
+
+  .n-list-item {
+    padding: 8px 12px;
+    border-bottom: 1px solid $medium-gray;
+
+    &:last-child {
+      border-bottom: none;
+    }
+
+    .n-list-item__prefix {
+      margin-right: 12px;
+    }
+
+    .n-thing {
+      .n-thing-header {
+        margin-bottom: 2px;
+      }
+
+      .n-thing-header__title {
+        font-size: 14px;
+        line-height: 1.3;
+        font-weight: 500;
+      }
+
+      .n-thing-main__description {
+        margin-top: 2px;
+        font-size: 12px;
+        line-height: 1.4;
+      }
+    }
+
+    .n-list-item__suffix {
+      margin-left: 12px;
+    }
+  }
 }
 </style>

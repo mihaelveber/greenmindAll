@@ -1,0 +1,403 @@
+// Paper Dashboard theme overrides for Naive UI components
+// This file applies Paper Dashboard styling to the existing Naive UI layout
+
+// Import Paper Dashboard variables
+@import "./paper/variables";
+
+// Override body and html to ensure full height
+html, body, #app {
+  height: 100%;
+  min-height: 100vh;
+  margin: 0;
+  padding: 0;
+}
+
+// Paper Dashboard global styles
+body {
+  font-family: 'Muli', "Helvetica Neue", Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  color: $font-color;
+  background: $smoke-bg;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+// Ensure dashboard container takes full height
+.dashboard-container {
+  min-height: 100vh;
+  background: $smoke-bg;
+
+  // Sidebar styling with Paper Dashboard theme
+  .n-layout-sider {
+    background: $black-background-color !important;
+    color: $white-color !important;
+
+    .logo {
+      border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+      padding: 18px 20px;
+      margin: 0;
+
+      .logo-img {
+        width: 40px;
+        height: 40px;
+        margin-right: 12px;
+        display: inline-block;
+        vertical-align: middle;
+      }
+
+      .n-gradient-text {
+        display: inline-block;
+        vertical-align: middle;
+        color: $white-color !important;
+        font-weight: 400;
+      }
+    }
+
+    // Menu styling - Paper Dashboard style (simple opacity changes, no backgrounds)
+    .n-menu {
+      background: transparent !important;
+      color: $white-color !important;
+
+      // Remove ALL backgrounds from menu items
+      .n-menu-item,
+      .n-menu-item:hover,
+      .n-menu-item:focus,
+      .n-menu-item:active,
+      .n-menu-item.n-menu-item--selected,
+      .n-menu-item.n-menu-item--selected:hover,
+      .n-menu-item.n-menu-item--selected:focus,
+      .n-menu-item.n-menu-item--selected:active {
+        background-color: transparent !important;
+        background-image: none !important;
+        background: transparent !important;
+        box-shadow: none !important;
+      }
+
+      .n-menu-item {
+        color: $white-color !important;
+        opacity: 0.7;
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+        padding: 10px 10px 10px 15px !important;
+        margin: 10px 0;
+        position: relative;
+
+        // Remove any default backgrounds and borders
+        &::before {
+          display: none !important;
+        }
+
+        &::after {
+          display: none !important;
+        }
+
+        // Target the text content
+        .n-menu-item-content {
+          color: $white-color !important;
+          background: transparent !important;
+
+          .n-menu-item-content-header {
+            color: $white-color !important;
+          }
+        }
+
+        &:hover {
+          opacity: 1 !important;
+
+          .n-menu-item-content {
+            color: $white-color !important;
+          }
+        }
+
+        // Selected state - just like Paper Dashboard (only opacity and color change)
+        &.n-menu-item--selected {
+          color: $success-color !important;
+          opacity: 1 !important;
+
+          // Add the right arrow indicator
+          &::after {
+            content: "";
+            display: block !important;
+            position: absolute;
+            right: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 0;
+            height: 0;
+            border-top: 17px solid transparent;
+            border-bottom: 17px solid transparent;
+            border-right: 17px solid $smoke-bg;
+          }
+
+          .n-menu-item-content {
+            color: $success-color !important;
+
+            .n-menu-item-content-header {
+              color: $success-color !important;
+            }
+          }
+        }
+
+        .n-menu-item-content__icon {
+          font-size: 24px;
+          margin-right: 15px;
+          color: inherit !important;
+        }
+      }
+
+      // Additional override for menu item children
+      .n-menu-item-content__arrow,
+      .n-menu-item-content__extra {
+        color: $white-color !important;
+      }
+    }
+
+    // Nuclear option: remove all Naive UI menu backgrounds globally in sidebar
+    .n-menu .n-menu-item-content,
+    .n-menu .n-menu-item-content:hover,
+    .n-menu .n-menu-item-content:focus,
+    .n-menu .n-menu-item-content:active,
+    .n-menu .n-menu-item-content__icon,
+    .n-menu .n-menu-item-content-header {
+      background-color: transparent !important;
+      background-image: none !important;
+      background: transparent !important;
+    }
+  }
+
+  // Header/Navbar styling
+  .n-layout-header {
+    background: $white-background-color !important;
+    box-shadow: 0 1px 4px 0 rgba(0, 0, 0, 0.14);
+
+    .header-content {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 24px;
+
+      .page-title {
+        margin: 0;
+        font-weight: 300;
+        color: $font-color;
+        font-size: 24px;
+      }
+
+      .user-section {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+      }
+    }
+  }
+
+  // Content area styling
+  .n-layout-content {
+    background: $smoke-bg !important;
+    min-height: calc(100vh - 64px);
+  }
+}
+
+// Style Naive UI cards with Paper Dashboard look - exact match
+.n-card {
+  border-radius: $border-radius-extreme !important;
+  box-shadow: 0 2px 2px rgba(204, 197, 185, 0.5) !important;
+  background-color: #FFFFFF !important;
+  color: $card-black-color !important;
+  margin-bottom: 20px !important;
+  position: relative !important;
+  z-index: 1 !important;
+  border: none !important;
+  transition: none !important; // Remove all transitions
+
+  // Remove hover effects
+  &:hover {
+    box-shadow: 0 2px 2px rgba(204, 197, 185, 0.5) !important;
+    transform: none !important;
+  }
+
+  .n-card-header {
+    padding: 20px 20px 0 !important;
+    border-bottom: 0 !important;
+    background-color: transparent !important;
+
+    .n-card-header__main {
+      margin: 0 !important;
+      color: $card-black-color !important;
+      font-weight: $font-weight-light !important;
+      font-size: 18px;
+    }
+
+    .n-card-header__extra {
+      color: $card-black-color !important;
+    }
+  }
+
+  .n-card__content {
+    padding: 15px 15px 10px 15px !important;
+  }
+
+  .n-card__footer {
+    padding: 0 15px 10px 15px !important;
+    line-height: 30px !important;
+    border-top: 0 !important;
+
+    hr {
+      margin-top: 5px;
+      margin-bottom: 5px;
+    }
+  }
+
+  // Footer stats styling
+  .footer {
+    padding: 0;
+    line-height: 30px;
+  }
+
+  .stats {
+    color: #a9a9a9;
+    font-weight: 300;
+
+    i {
+      margin-right: 2px;
+      min-width: 15px;
+      display: inline-block;
+    }
+  }
+
+  // Card category styling
+  .card-category,
+  .n-card__content .card-category {
+    font-size: $font-size-base;
+    font-weight: $font-weight-normal;
+    color: $dark-gray;
+    margin-bottom: 0;
+  }
+
+  // Card title styling
+  .card-title,
+  h4.card-title {
+    margin: 0;
+    color: $card-black-color;
+    font-weight: $font-weight-light;
+  }
+
+  // Chart container
+  .ct-chart {
+    margin: 30px 0 30px;
+    height: 245px;
+  }
+}
+
+// Style buttons with Paper Dashboard look
+.n-button {
+  border-radius: 20px !important;
+  text-transform: uppercase;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  padding: 11px 30px !important;
+
+  &.n-button--primary-type {
+    background: $success-color !important;
+    border-color: $success-color !important;
+    color: $white-color !important;
+
+    &:hover {
+      background: lighten($success-color, 5%) !important;
+      box-shadow: 0 6px 10px -4px rgba($success-color, 0.5) !important;
+    }
+
+    &:active {
+      background: darken($success-color, 5%) !important;
+    }
+  }
+
+  &.n-button--info-type {
+    background: $info-color !important;
+    border-color: $info-color !important;
+    color: $white-color !important;
+
+    &:hover {
+      background: lighten($info-color, 5%) !important;
+      box-shadow: 0 6px 10px -4px rgba($info-color, 0.5) !important;
+    }
+  }
+
+  &.n-button--warning-type {
+    background: $warning-color !important;
+    border-color: $warning-color !important;
+    color: $white-color !important;
+
+    &:hover {
+      background: lighten($warning-color, 5%) !important;
+      box-shadow: 0 6px 10px -4px rgba($warning-color, 0.5) !important;
+    }
+  }
+
+  &.n-button--error-type {
+    background: $danger-color !important;
+    border-color: $danger-color !important;
+    color: $white-color !important;
+
+    &:hover {
+      background: lighten($danger-color, 5%) !important;
+      box-shadow: 0 6px 10px -4px rgba($danger-color, 0.5) !important;
+    }
+  }
+}
+
+// Style inputs with Paper Dashboard look
+.n-input {
+  .n-input__input-el {
+    border-radius: 6px;
+    border: 1px solid $medium-gray;
+    background: $gray-input-bg;
+    color: $font-color;
+
+    &:focus {
+      border-color: $success-color;
+      box-shadow: none;
+    }
+  }
+}
+
+// Tables
+.n-data-table {
+  .n-data-table-th {
+    background: transparent;
+    border-bottom: 1px solid $table-line-color;
+    color: $font-color;
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 11px;
+  }
+
+  .n-data-table-td {
+    border-bottom: 1px solid $light-gray;
+    color: $font-color;
+  }
+}
+
+// Progress bars
+.n-progress {
+  .n-progress-graph-line-fill {
+    background: $success-color !important;
+  }
+}
+
+// Tags
+.n-tag {
+  border-radius: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 11px;
+  padding: 4px 12px;
+}
+
+// Smooth transitions (exclude cards)
+*:not(.n-card):not(.n-card *) {
+  transition: background-color 0.3s ease, color 0.3s ease, box-shadow 0.3s ease, opacity 0.3s ease;
+}

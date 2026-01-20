@@ -95,76 +95,87 @@
               </n-card>
             </n-gi>
 
-            <!-- Standards Overview -->
-            <n-gi>
-              <n-card title="📋 Compliance Standards Overview" :bordered="false">
+            <!-- Standards Overview - Full Width -->
+            <n-gi :span="24">
+              <n-card :bordered="false">
+                <template #header>
+                  <div>
+                    <h4 class="card-title">Compliance Standards Overview</h4>
+                    <p class="card-category">Track your progress across all standards</p>
+                  </div>
+                </template>
                 <n-spin :show="loadingStats">
                   <div v-if="standardTypes.length === 0" style="padding: 24px; text-align: center;">
                     <n-text depth="3">Loading standards...</n-text>
                   </div>
-                  <n-grid v-else :cols="3" :x-gap="24" :y-gap="24" responsive="screen">
-                    <n-gi v-for="standard in standardTypes" :key="standard.type">
-                      <div class="stat-card-circle" @click="navigateToStandard(standard.type)">
-                        <n-space vertical :size="16" align="center">
-                          <div class="circle-progress-wrapper">
-                            <n-progress
-                              type="circle"
-                              :percentage="standard.completion_percentage"
-                              :stroke-width="10"
-                              :color="getProgressColor(standard.completion_percentage)"
-                              :rail-color="'rgba(255, 255, 255, 0.1)'"
-                              :style="{ width: '160px', height: '160px' }"
-                            >
-                              <div class="progress-content">
-                                <div style="font-size: 48px; margin-bottom: 8px;">{{ standard.icon }}</div>
-                                <n-text strong style="font-size: 28px; color: #54d944;">{{ standard.completion_percentage.toFixed(0) }}%</n-text>
-                                <n-text depth="3" style="font-size: 12px; margin-top: 4px;">{{ standard.answered_requirements }}/{{ standard.total_requirements }}</n-text>
-                              </div>
-                            </n-progress>
-                          </div>
-                          <n-text strong style="font-size: 16px; text-align: center;">{{ standard.name }}</n-text>
-                          <n-text depth="3" style="font-size: 12px; text-align: center;">{{ standard.description }}</n-text>
-                        </n-space>
+                  <div v-else style="display: flex; gap: 24px; flex-wrap: wrap; justify-content: center;">
+                    <div v-for="standard in standardTypes" :key="standard.type"
+                         @click="navigateToStandard(standard.type)"
+                         style="cursor: pointer; flex: 0 0 auto; text-align: center; padding: 15px;">
+                      <n-progress
+                        type="circle"
+                        :percentage="standard.completion_percentage"
+                        :stroke-width="8"
+                        :color="'#41B883'"
+                        :rail-color="'rgba(0, 0, 0, 0.1)'"
+                        :style="{ width: '140px', height: '140px', margin: '0 auto' }"
+                      >
+                        <div style="text-align: center;">
+                          <div style="font-size: 32px; font-weight: 300; color: #333;">{{ standard.completion_percentage.toFixed(0) }}%</div>
+                          <div style="font-size: 12px; color: #9A9A9A; margin-top: 4px;">{{ standard.answered_requirements }}/{{ standard.total_requirements }}</div>
+                        </div>
+                      </n-progress>
+                      <div style="margin-top: 16px;">
+                        <div style="font-size: 14px; font-weight: 600; color: #333;">{{ standard.name }}</div>
+                        <div style="font-size: 12px; color: #9A9A9A; margin-top: 4px;">{{ standard.description }}</div>
                       </div>
-                    </n-gi>
-                  </n-grid>
+                    </div>
+                  </div>
                 </n-spin>
+                <template #footer>
+                  <hr />
+                  <div class="stats">
+                    <i class="ti-reload"></i> Updated just now
+                  </div>
+                </template>
               </n-card>
             </n-gi>
 
-            <n-gi>
-              <n-card title="📊 Detailed Progress by Category" :bordered="false">
-                <n-spin :show="loadingStats">
-                  <div v-if="statistics.length === 0" style="padding: 24px; text-align: center;">
-                    <n-text depth="3">Loading statistics...</n-text>
-                  </div>
-                  <n-grid v-else :cols="4" :x-gap="24" :y-gap="24" responsive="screen">
-                    <n-gi v-for="stat in statistics" :key="stat.category_id">
-                      <div class="stat-card-circle" @click="navigateToCategory(stat.category_id)">
-                        <n-space vertical :size="16" align="center">
-                          <div class="circle-progress-wrapper">
-                            <n-progress
-                              type="circle"
-                              :percentage="stat.completion_percentage"
-                              :stroke-width="8"
-                              :color="getProgressColor(stat.completion_percentage)"
-                              :rail-color="'rgba(255, 255, 255, 0.1)'"
-                              :style="{ width: '140px', height: '140px' }"
-                            >
-                              <div class="progress-content">
-                                <n-text strong style="font-size: 28px; color: #54d944;">{{ stat.completion_percentage }}%</n-text>
-                                <n-text depth="3" style="font-size: 12px; margin-top: 4px;">{{ stat.answered_disclosures }}/{{ stat.total_disclosures }}</n-text>
-                              </div>
-                            </n-progress>
-                          </div>
-                          <n-text strong style="font-size: 14px; text-align: center;">{{ stat.category_name }}</n-text>
-                          <n-text depth="3" style="font-size: 12px; text-align: center;">{{ stat.category_code }}</n-text>
-                        </n-space>
+            <!-- Individual cards for each category - Full Width Row -->
+            <n-gi :span="24">
+              <n-grid :cols="4" :x-gap="24">
+                <n-gi v-for="stat in statistics" :key="stat.category_id">
+                  <n-card :bordered="false" style="height: 100%;">
+                    <template #header>
+                      <div>
+                        <h4 class="card-title">{{ stat.category_name }}</h4>
+                        <p class="card-category">{{ stat.category_code }}</p>
                       </div>
-                    </n-gi>
-                  </n-grid>
-                </n-spin>
-              </n-card>
+                    </template>
+                    <div @click="navigateToCategory(stat.category_id)" style="cursor: pointer; text-align: center; padding: 20px 0;">
+                      <n-progress
+                        type="circle"
+                        :percentage="stat.completion_percentage"
+                        :stroke-width="8"
+                        :color="'#41B883'"
+                        :rail-color="'rgba(0, 0, 0, 0.1)'"
+                        :style="{ width: '120px', height: '120px', margin: '0 auto', display: 'block' }"
+                      >
+                        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%;">
+                          <div style="font-size: 32px; font-weight: 300; color: #333; line-height: 1;">{{ stat.completion_percentage }}%</div>
+                          <div style="font-size: 12px; color: #9A9A9A; margin-top: 8px; line-height: 1;">{{ stat.answered_disclosures }}/{{ stat.total_disclosures }}</div>
+                        </div>
+                      </n-progress>
+                    </div>
+                    <template #footer>
+                      <hr />
+                      <div class="stats">
+                        <i class="ti-reload"></i> Click to view details
+                      </div>
+                    </template>
+                  </n-card>
+                </n-gi>
+              </n-grid>
             </n-gi>
           </n-grid>
         </n-layout-content>
@@ -174,14 +185,6 @@
     <!-- Settings Modal -->
     <n-modal v-model:show="showSettingsModal" preset="card" title="⚙️ Settings" style="width: 600px;">
       <n-form label-placement="left" label-width="120px;">
-        <n-form-item label="Theme">
-          <n-select
-            v-model:value="selectedTheme"
-            :options="themeOptions"
-            placeholder="Select theme"
-          />
-        </n-form-item>
-        
         <n-form-item label="Language">
           <n-select
             v-model:value="selectedLanguage"
@@ -498,13 +501,7 @@ const showSettingsModal = ref(false)
 const userNickname = ref(authStore.user?.username || '')
 const selectedAvatar = ref(localStorage.getItem('userAvatar') || 'default')
 const selectedLanguage = ref(localStorage.getItem('locale') || 'en')
-const selectedTheme = ref<'greenmind' | 'dark' | 'light'>(localStorage.getItem('theme') as any || 'greenmind')
-
-const themeOptions = [
-  { label: '🌿 GreenMind', value: 'greenmind' },
-  { label: '🌙 Dark Mode', value: 'dark' },
-  { label: '☀️ Light Mode', value: 'light' }
-]
+// Theme removed - using Paper Dashboard theme only
 
 // RAG TIER Settings
 const ragSettings = ref({
@@ -559,7 +556,7 @@ const menuOptions = computed(() => {
   
   // Add dynamic standard type menus
   const standardMenus = standardTypes.value.map(standard => ({
-    label: `${standard.icon} ${standard.name}`,
+    label: standard.name,
     key: `standard-${standard.type}`,
     icon: () => h(NIcon, null, { default: () => h(ClipboardOutline) })
   }))
@@ -578,7 +575,7 @@ const menuOptions = computed(() => {
     },
     // Only show Team Management for admins and organization owners
     ...(canManageTeam ? [{
-      label: '👥 Team Management',
+      label: 'Team Management',
       key: 'team',
       icon: () => h(NIcon, null, { default: () => h(PersonOutline) })
     }] : []),

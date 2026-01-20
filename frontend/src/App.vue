@@ -1,48 +1,34 @@
 <template>
-  <n-config-provider :theme="theme" :theme-overrides="themeOverrides">
-    <n-global-style />
-    <n-message-provider>
-      <n-notification-provider>
-        <n-dialog-provider>
-          <router-view />
-        </n-dialog-provider>
-      </n-notification-provider>
-    </n-message-provider>
-  </n-config-provider>
+  <div :class="{ 'nav-open': showSidebar }">
+    <n-config-provider :theme="theme" :theme-overrides="themeOverrides">
+      <n-global-style />
+      <n-message-provider>
+        <n-notification-provider>
+          <n-dialog-provider>
+            <router-view />
+          </n-dialog-provider>
+        </n-notification-provider>
+      </n-message-provider>
+    </n-config-provider>
+  </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, provide } from 'vue'
 import { darkTheme, lightTheme, NConfigProvider, NGlobalStyle, NMessageProvider, NNotificationProvider, NDialogProvider } from 'naive-ui'
 
-// Theme mode: 'greenmind' | 'dark' | 'light'
-const themeMode = ref<'greenmind' | 'dark' | 'light'>(localStorage.getItem('theme') as any || 'greenmind')
+// Sidebar state
+const showSidebar = ref(false)
+provide('showSidebar', showSidebar)
 
-// Computed theme based on mode
-const isDarkMode = computed(() => {
-  return themeMode.value === 'greenmind' || themeMode.value === 'dark'
-})
-
-const isGreenMind = computed(() => themeMode.value === 'greenmind')
-
-const theme = computed(() => isDarkMode.value ? darkTheme : null)
+// Always use Paper Dashboard theme (no theme selector)
+const theme = computed(() => null) // Use light theme always
 
 onMounted(() => {
-  // Watch for storage changes (cross-tab sync)
-  window.addEventListener('storage', (e) => {
-    if (e.key === 'theme') {
-      themeMode.value = (e.newValue as any) || 'greenmind'
-    }
-  })
-  
-  // Apply theme class to body
-  watch([isDarkMode, isGreenMind], ([dark, green]) => {
-    document.documentElement.classList.toggle('dark', dark)
-    document.documentElement.classList.toggle('greenmind', green)
-    document.body.classList.toggle('theme-greenmind', green)
-    document.body.classList.toggle('theme-dark', !green && dark)
-    document.body.classList.toggle('theme-light', !dark)
-  }, { immediate: true })
+  // Apply Paper Dashboard theme class to body
+  document.documentElement.classList.remove('dark', 'greenmind')
+  document.body.classList.remove('theme-greenmind', 'theme-dark', 'theme-light')
+  document.body.classList.add('theme-paper')
 })
 
 // GreenMind color scheme (green accent on dark background)
@@ -79,6 +65,32 @@ const greenMindOverrides = {
   },
   Card: {
     borderColor: 'rgba(84, 217, 68, 0.2)',
+  },
+  Menu: {
+    // Remove all backgrounds - Paper Dashboard style
+    itemColorActive: 'transparent',
+    itemColorActiveHover: 'transparent',
+    itemColorHover: 'transparent',
+    // Text colors
+    itemTextColor: 'rgba(255, 255, 255, 0.7)',
+    itemTextColorActive: '#41B883',
+    itemTextColorActiveHover: '#41B883',
+    itemTextColorHover: 'rgba(255, 255, 255, 1)',
+    itemTextColorChildActive: '#41B883',
+    // Icon colors
+    itemIconColor: 'rgba(255, 255, 255, 0.7)',
+    itemIconColorActive: '#41B883',
+    itemIconColorActiveHover: '#41B883',
+    itemIconColorHover: 'rgba(255, 255, 255, 1)',
+    itemIconColorChildActive: '#41B883',
+    // Background
+    color: 'transparent',
+    // Arrow colors
+    arrowColor: 'rgba(255, 255, 255, 0.7)',
+    arrowColorActive: '#41B883',
+    arrowColorActiveHover: '#41B883',
+    arrowColorHover: 'rgba(255, 255, 255, 1)',
+    arrowColorChildActive: '#41B883',
   }
 }
 
@@ -102,12 +114,8 @@ const lightOverrides = {
   }
 }
 
-// Select theme overrides based on mode
-const themeOverrides = computed(() => {
-  if (themeMode.value === 'greenmind') return greenMindOverrides
-  if (themeMode.value === 'dark') return darkOverrides
-  return lightOverrides
-})
+// Use Paper Dashboard theme overrides (based on greenMindOverrides with Paper colors)
+const themeOverrides = computed(() => greenMindOverrides)
 </script>
 
 <style>
@@ -117,39 +125,15 @@ const themeOverrides = computed(() => {
   box-sizing: border-box;
 }
 
-/* GreenMind theme - dark with green accents */
-body.theme-greenmind {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-  background: radial-gradient(circle at 20% 30%, rgba(84, 217, 68, 0.15) 0%, transparent 50%),
-              radial-gradient(circle at 80% 70%, rgba(84, 217, 68, 0.1) 0%, transparent 50%),
-              linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
-  min-height: 100vh;
-  background-attachment: fixed;
-  color: #ffffff;
-}
-
-/* Standard dark theme - no green accents */
-body.theme-dark {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-  background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
-  min-height: 100vh;
-  background-attachment: fixed;
-  color: #ffffff;
-}
-
-/* Light theme */
-body.theme-light {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-  background: linear-gradient(135deg, #f5f5f5 0%, #ffffff 100%);
-  min-height: 100vh;
-  background-attachment: fixed;
-  color: #1a1a1a;
-}
-
-/* Default/fallback */
+/* Paper Dashboard theme */
+body.theme-paper,
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  font-family: 'Muli', "Helvetica Neue", Arial, sans-serif;
+  background: #F5F5F5;
   min-height: 100vh;
+  color: #66615B;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 #app {

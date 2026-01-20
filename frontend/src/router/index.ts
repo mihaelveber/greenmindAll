@@ -53,19 +53,7 @@ const router = createRouter({
       name: 'team',
       component: () => import('../views/UserManagementView.vue'),
       meta: { requiresAuth: true }
-    },    // Admin panel routes removed - admin panel is now separate app on port 5174
-    // {
-    //   path: '/admin',
-    //   name: 'admin',
-    //   component: () => import('../views/AdminTokenDashboard.vue'),
-    //   meta: { requiresAuth: true, requiresAdmin: true }
-    // },
-    // {
-    //   path: '/admin-dashboard',
-    //   name: 'admin-dashboard',
-    //   component: () => import('../views/AdminDashboard.vue'),
-    //   meta: { requiresAuth: true, requiresAdmin: true }
-    // }
+    }
   ]
 })
 

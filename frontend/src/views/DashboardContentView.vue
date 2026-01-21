@@ -243,6 +243,7 @@ const loadActiveTasks = async () => {
     // If number of tasks decreased (task finished and removed from active list)
     if (previousTaskCount > newTaskCount) {
       await loadStatistics()
+      await loadStandardTypes()
 
       // Clean up display progress for completed tasks
       const activeTaskIds = new Set(response.data.map((t: AITask) => t.task_id))

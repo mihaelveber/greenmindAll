@@ -11,9 +11,7 @@
         <!-- Step 1: Company Type Selection -->
         <div v-if="currentStep === 1" class="step-container">
           <div class="welcome-header">
-            <n-gradient-text :size="36" type="info">
-              Welcome! 👋
-            </n-gradient-text>
+            <h1>Welcome! 👋</h1>
             <p class="subtitle">Let's set up your ESRS compliance profile</p>
           </div>
 
@@ -23,27 +21,27 @@
           <n-grid :cols="3" :x-gap="24" responsive="screen" class="company-types">
             <n-gi>
               <n-card
-                :class="['company-card', { selected: selectedCompanyType === 'small' }]"
+                :class="['company-card', 'company-card-small', { selected: selectedCompanyType === 'small' }]"
                 hoverable
                 @click="selectCompanyType('small')"
               >
                 <div class="card-icon">🏢</div>
                 <n-h3 class="card-title">Small Company</n-h3>
                 <p class="card-subtitle">Fewer than 50 employees and limited reporting requirements</p>
-                
+
                 <n-divider />
-                
+
                 <n-space vertical :size="8" class="features">
                   <div class="feature-item">
-                    <n-icon :component="CheckmarkCircle" color="#54d944" />
+                    <n-icon :component="CheckmarkCircle" color="#FFFFFF" />
                     <span>Simplified disclosures</span>
                   </div>
                   <div class="feature-item">
-                    <n-icon :component="CheckmarkCircle" color="#54d944" />
+                    <n-icon :component="CheckmarkCircle" color="#FFFFFF" />
                     <span>Essential metrics only</span>
                   </div>
                   <div class="feature-item">
-                    <n-icon :component="CheckmarkCircle" color="#54d944" />
+                    <n-icon :component="CheckmarkCircle" color="#FFFFFF" />
                     <span>Reduced compliance burden</span>
                   </div>
                 </n-space>
@@ -52,27 +50,27 @@
 
             <n-gi>
               <n-card
-                :class="['company-card', { selected: selectedCompanyType === 'sme' }]"
+                :class="['company-card', 'company-card-sme', { selected: selectedCompanyType === 'sme' }]"
                 hoverable
                 @click="selectCompanyType('sme')"
               >
                 <div class="card-icon">🏭</div>
                 <n-h3 class="card-title">SME (Medium Enterprise)</n-h3>
                 <p class="card-subtitle">50-250 employees with standard ESRS framework</p>
-                
+
                 <n-divider />
-                
+
                 <n-space vertical :size="8" class="features">
                   <div class="feature-item">
-                    <n-icon :component="CheckmarkCircle" color="#54d944" />
+                    <n-icon :component="CheckmarkCircle" color="#FFFFFF" />
                     <span>Standard disclosures</span>
                   </div>
                   <div class="feature-item">
-                    <n-icon :component="CheckmarkCircle" color="#54d944" />
+                    <n-icon :component="CheckmarkCircle" color="#FFFFFF" />
                     <span>Materiality assessment</span>
                   </div>
                   <div class="feature-item">
-                    <n-icon :component="CheckmarkCircle" color="#54d944" />
+                    <n-icon :component="CheckmarkCircle" color="#FFFFFF" />
                     <span>Stakeholder engagement</span>
                   </div>
                 </n-space>
@@ -81,27 +79,27 @@
 
             <n-gi>
               <n-card
-                :class="['company-card', { selected: selectedCompanyType === 'large' }]"
+                :class="['company-card', 'company-card-large', { selected: selectedCompanyType === 'large' }]"
                 hoverable
                 @click="selectCompanyType('large')"
               >
                 <div class="card-icon">🏬</div>
                 <n-h3 class="card-title">Large Corporation</n-h3>
                 <p class="card-subtitle">Over 250 employees with comprehensive requirements</p>
-                
+
                 <n-divider />
-                
+
                 <n-space vertical :size="8" class="features">
                   <div class="feature-item">
-                    <n-icon :component="CheckmarkCircle" color="#54d944" />
+                    <n-icon :component="CheckmarkCircle" color="#FFFFFF" />
                     <span>Full ESRS compliance</span>
                   </div>
                   <div class="feature-item">
-                    <n-icon :component="CheckmarkCircle" color="#54d944" />
+                    <n-icon :component="CheckmarkCircle" color="#FFFFFF" />
                     <span>Value chain reporting</span>
                   </div>
                   <div class="feature-item">
-                    <n-icon :component="CheckmarkCircle" color="#54d944" />
+                    <n-icon :component="CheckmarkCircle" color="#FFFFFF" />
                     <span>Detailed governance</span>
                   </div>
                 </n-space>
@@ -151,9 +149,7 @@
         <!-- Step 2: Document Upload -->
         <div v-if="currentStep === 2" class="step-container">
           <div class="welcome-header">
-            <n-gradient-text :size="36" type="info">
-              Upload Documents 📄
-            </n-gradient-text>
+            <h1>Upload Documents 📄</h1>
             <p class="subtitle">Add your company documents for compliance</p>
           </div>
 
@@ -265,12 +261,11 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { 
+import {
   useMessage,
   NCard,
   NSteps,
   NStep,
-  NGradientText,
   NH2,
   NH3,
   NH4,
@@ -426,23 +421,25 @@ const goToDashboard = async () => {
 }
 </script>
 
-<style scoped>
+<style scoped lang="scss">
+@import '../assets/sass/paper/variables';
+
 .wizard-container {
   min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 40px 20px;
+  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
 }
 
 .wizard-card {
   width: 100%;
   max-width: 1200px;
-  backdrop-filter: blur(20px);
-  background: rgba(255, 255, 255, 0.05);
-  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 24px;
+  background: $white-background-color;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.1);
+  border-radius: 20px;
+  border: none;
   padding: 40px;
 }
 
@@ -457,10 +454,17 @@ const goToDashboard = async () => {
 .welcome-header {
   text-align: center;
   margin-bottom: 48px;
+
+  h1 {
+    font-size: 36px;
+    font-weight: 300;
+    color: $font-color;
+    margin: 0;
+  }
 }
 
 .subtitle {
-  color: rgba(255, 255, 255, 0.7);
+  color: $dark-gray;
   margin-top: 12px;
   font-size: 18px;
 }
@@ -468,11 +472,13 @@ const goToDashboard = async () => {
 .section-title {
   text-align: center;
   margin-bottom: 12px;
+  font-weight: 300;
+  color: $font-color;
 }
 
 .section-description {
   text-align: center;
-  color: rgba(255, 255, 255, 0.6);
+  color: $dark-gray;
   margin-bottom: 40px;
   font-size: 16px;
 }
@@ -484,21 +490,20 @@ const goToDashboard = async () => {
 .company-card {
   cursor: pointer;
   transition: all 0.3s ease;
-  background: rgba(255, 255, 255, 0.03);
-  border: 2px solid rgba(255, 255, 255, 0.1);
   height: 100%;
-}
+  border-radius: 20px;
+  border: none;
+  color: $white-color;
 
-.company-card:hover {
-  transform: translateY(-4px);
-  border-color: rgba(84, 217, 68, 0.4);
-  box-shadow: 0 8px 24px rgba(84, 217, 68, 0.2);
-}
+  &:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
+  }
 
-.company-card.selected {
-  border-color: #54d944;
-  background: rgba(84, 217, 68, 0.1);
-  box-shadow: 0 8px 24px rgba(84, 217, 68, 0.3);
+  &.selected {
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+    transform: scale(1.05);
+  }
 }
 
 .card-icon {
@@ -511,11 +516,13 @@ const goToDashboard = async () => {
   text-align: center;
   margin-bottom: 8px;
   font-size: 20px;
+  font-weight: 600;
+  color: $white-color;
 }
 
 .card-subtitle {
   text-align: center;
-  color: rgba(255, 255, 255, 0.6);
+  color: rgba(255, 255, 255, 0.9);
   font-size: 14px;
   min-height: 40px;
 }
@@ -528,7 +535,7 @@ const goToDashboard = async () => {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: rgba(255, 255, 255, 0.8);
+  color: $white-color;
   font-size: 14px;
 }
 
@@ -540,7 +547,7 @@ const goToDashboard = async () => {
 }
 
 .upload-card {
-  background: rgba(255, 255, 255, 0.03);
+  background: $white-background-color;
   margin-bottom: 24px;
 }
 
@@ -550,7 +557,7 @@ const goToDashboard = async () => {
 }
 
 .upload-hint {
-  color: rgba(255, 255, 255, 0.6);
+  color: $dark-gray;
   margin-top: 12px;
 }
 
@@ -565,16 +572,76 @@ const goToDashboard = async () => {
 }
 
 .summary-card {
-  background: rgba(255, 255, 255, 0.03);
+  background: $white-background-color;
   max-width: 500px;
   margin: 0 auto;
+}
+
+// Override n-steps styling with more aggressive targeting
+:deep(.n-steps) {
+  .n-step-indicator--process,
+  .n-step-indicator--finish {
+    border-color: $success-color !important;
+    background-color: $success-color !important;
+    --n-indicator-text-color: #FFFFFF !important;
+  }
+
+  .n-step-indicator {
+    background: $white-background-color;
+    border: 2px solid $medium-gray;
+    color: $font-color;
+  }
+
+  .n-step__title {
+    color: $font-color;
+    font-weight: 600;
+  }
+
+  .n-step__description {
+    color: $dark-gray;
+  }
+}
+
+// Override card styling
+:deep(.n-card) {
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.1);
+  border-radius: 20px;
+  border: none;
+  background: $white-background-color;
+}
+
+// Company card specific styling - n-card IS the company-card
+:deep(.n-card.company-card-small) {
+  background: linear-gradient(135deg, #7A9E9F 0%, #427C89 100%) !important;
+}
+
+:deep(.n-card.company-card-sme) {
+  background: linear-gradient(135deg, #68B3C8 0%, #3091B2 100%) !important;
+}
+
+:deep(.n-card.company-card-large) {
+  background: linear-gradient(135deg, #F3BB45 0%, #BB992F 100%) !important;
+}
+
+:deep(.n-card.company-card) {
+  .n-divider {
+    background-color: rgba(255, 255, 255, 0.3);
+  }
+
+  .n-card__content {
+    color: $white-color;
+  }
+
+  .n-h3 {
+    color: $white-color;
+  }
 }
 
 @media (max-width: 768px) {
   .wizard-card {
     padding: 24px;
   }
-  
+
   .company-types {
     grid-template-columns: 1fr !important;
   }

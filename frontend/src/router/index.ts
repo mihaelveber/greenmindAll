@@ -44,6 +44,11 @@ const router = createRouter({
           component: () => import('../views/DocumentsView.vue')
         },
         {
+          path: 'bulk-processing',
+          name: 'bulk-processing',
+          component: () => import('../views/BulkProcessingView.vue')
+        },
+        {
           path: 'standards/:standardType',
           name: 'standards',
           component: () => import('../views/StandardView.vue')
@@ -64,7 +69,22 @@ const router = createRouter({
 
 router.beforeEach(async (to, from, next) => {
   const authStore = useAuthStore()
-  
+
+  // If we have a token but no user (e.g., after page refresh), fetch the user
+  if (authStore.accessToken && !authStore.user) {
+    try {
+      await authStore.fetchCurrentUser()
+    } catch (error) {
+      // If fetching user fails, clear tokens and redirect to login
+      console.error('Failed to restore user session:', error)
+      await authStore.logout()
+      if (to.meta.requiresAuth) {
+        next('/login')
+        return
+      }
+    }
+  }
+
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
     next('/login')
   } else if (to.meta.requiresAdmin && !authStore.user?.is_superuser) {

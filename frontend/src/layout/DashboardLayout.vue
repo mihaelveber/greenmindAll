@@ -493,6 +493,11 @@ const menuOptions = computed(() => {
 
   const otherMenus = [
     {
+      label: 'Bulk AI Processing',
+      key: 'bulk-processing',
+      icon: () => h(NIcon, null, { default: () => h(CloudUploadOutline) })
+    },
+    {
       label: t('nav.documents'),
       key: 'documents',
       icon: () => h(NIcon, null, { default: () => h(DocumentTextOutline) })
@@ -580,6 +585,9 @@ const handleMenuUpdate = async (key: string) => {
   } else if (key === 'documents') {
     activeKey.value = 'documents'
     router.push('/documents')
+  } else if (key === 'bulk-processing') {
+    activeKey.value = 'bulk-processing'
+    router.push('/bulk-processing')
   } else if (key === 'settings') {
     showSettingsModal.value = true
     // Load branding info when opening settings

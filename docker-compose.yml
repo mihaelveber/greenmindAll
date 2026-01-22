@@ -39,6 +39,7 @@ services:
     - 8090:8090
     environment:
     - DEBUG=True
+    - ALLOWED_HOSTS=localhost,127.0.0.1,63.179.255.173
     - DB_HOST=db
     - DB_PORT=5432
     - DB_NAME=authdb

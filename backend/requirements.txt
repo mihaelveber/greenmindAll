@@ -49,6 +49,8 @@ openai==1.55.3
 anthropic==0.75.0
 google-generativeai==0.8.3
 rank-bm25==0.2.2
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.10.0+cpu
 sentence-transformers==5.1.2
 cohere==5.20.0
 voyageai==0.3.6

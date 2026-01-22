@@ -47,7 +47,7 @@ services:
     - REDIS_URL=redis://redis:6379/0
     - CELERY_BROKER_URL=redis://redis:6379/0
     - CELERY_RESULT_BACKEND=redis://redis:6379/0
-    - CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
+    - CORS_ALLOWED_ORIGINS=http://63.179.255.173:5173,http://63.179.255.173:5174,http://localhost:3000,http://localhost:5173
     - OPENAI_API_KEY=${OPENAI_API_KEY}
     depends_on:
       db:
@@ -109,7 +109,7 @@ services:
     ports:
     - 5173:5173
     environment:
-    - VITE_API_URL=http://localhost:8090/api
+    - VITE_API_URL=http://63.179.255.173:8090
     volumes:
     - ./frontend:/app
     - /app/node_modules
@@ -119,7 +119,7 @@ services:
     ports:
     - 5174:5174
     environment:
-    - VITE_API_URL=http://localhost:8090/api
+    - VITE_API_URL=http://63.179.255.173:8090
     volumes:
     - ./admin:/app
     - /app/node_modules

@@ -433,15 +433,24 @@ Return only the questions, one per line, without numbering or explanations."""
         
         # Generate AI response
         openai_service = OpenAIService()
-        system_prompt = f"""You are an ESRS expert consultant.
-        
-Disclosure: {thread.disclosure.code} - {thread.disclosure.name}
+        system_prompt = f"""You are an ESRS sustainability reporting expert assisting with disclosure {thread.disclosure.code}.
 
-DOCUMENTS:
+COMPANY DOCUMENTS:
 {document_context}
 
-CRITICAL: If documents lack info, respond: "⚠️ INSUFFICIENT INFORMATION: Documents missing [specific data]. Please upload relevant files."
-ONLY use information from documents above. Include exact numbers/data."""
+MANDATORY INSTRUCTIONS:
+1. DOCUMENT-ONLY RESPONSES: Use ONLY information explicitly present in the documents above
+2. If documents lack needed information, respond: "⚠️ INSUFFICIENT INFORMATION: The documents do not contain [specific data needed]. Please upload: [list required document types]."
+3. NEVER provide generic industry data or assumed information
+4. Extract exact numbers, dates, and metrics from documents - cite document name when possible
+5. For ESRS compliance, include: quantitative metrics, timeframes, governance processes, and risk assessments where available
+6. Format data clearly: use tables for multi-year data, convert decimals to percentages, include units
+
+DISCLOSURE CONTEXT:
+Code: {thread.disclosure.code}
+Name: {thread.disclosure.name}
+
+Provide factual, document-based responses only."""
         
         # Call OpenAI API
         messages_for_api = [{"role": "system", "content": system_prompt}]
@@ -727,17 +736,17 @@ async def regenerate_message(request, message_id: int, data: RegenerateMessageSc
         
         # Generate new response
         openai_service = OpenAIService()
-        system_prompt = f"""You are an expert ESRS consultant.
+        system_prompt = f"""You are an ESRS sustainability reporting expert.
 
-CRITICAL: If the available documents DO NOT contain sufficient information to answer the question, respond with:
-"⚠️ INSUFFICIENT INFORMATION: The available documents do not contain the necessary information. Please upload relevant documents."
-DO NOT provide generic or assumed answers without document support.
-        
-Disclosure: {thread.disclosure.code} - {thread.disclosure.name}
-Requirement: {thread.disclosure.requirement_text}
+CRITICAL: Answer ONLY with information from the documents below. If documents lack data, state: "⚠️ INSUFFICIENT INFORMATION: Missing [specific information]. Please upload [document types needed]."
 
-Available Documents:
-{document_context}"""
+DISCLOSURE: {thread.disclosure.code} - {thread.disclosure.name}
+REQUIREMENT: {thread.disclosure.requirement_text}
+
+AVAILABLE DOCUMENTS:
+{document_context}
+
+Provide document-based, factual responses with specific metrics and data points."""
         
         messages_for_api = [{"role": "system", "content": system_prompt}]
         messages_for_api.extend(previous_messages[:-1])  # All except the user msg we're about to add
@@ -1035,31 +1044,25 @@ async def ai_explain(request, disclosure_id: int, data: AIExplainSchema):
         
         # Generate AI explanation
         openai_service = OpenAIService()
-        system_prompt = f"""You are an expert ESRS (European Sustainability Reporting Standards) consultant.
+        system_prompt = f"""You are an ESRS (European Sustainability Reporting Standards) expert helping users understand disclosure requirements.
 
-CRITICAL: If you DO NOT have sufficient information to provide a complete answer, clearly state:
-"⚠️ INSUFFICIENT INFORMATION: I cannot provide a complete answer without [specific documents/data needed]. Please upload relevant documents."
-DO NOT provide generic guidance without specific document support.
+DISCLOSURE: {disclosure.code} - {disclosure.name}
+REQUIREMENT: {disclosure.requirement_text}
 
-Your task is to help the user understand what they need to include in their answer for this disclosure.
+AVAILABLE COMPANY DOCUMENTS:
+{document_context if document_context else "⚠️ No documents uploaded yet for this disclosure."}
 
-Disclosure: {disclosure.code} - {disclosure.name}
-Requirement: {disclosure.requirement_text}
+USER QUESTION: {question}
 
-Available Documents:
-{document_context if document_context else "No documents linked to this disclosure yet."}
+INSTRUCTIONS:
+1. If NO documents available, explain what specific documents/data are needed (e.g., "energy consumption data", "GHG inventory", "governance meeting minutes")
+2. If documents ARE available, explain how the available data addresses the requirement and what additional information may be needed
+3. Reference ESRS structure: governance, strategy, impact/risk metrics, targets
+4. Provide practical guidance on what information must be included in the disclosure
+5. Use clear formatting with bullet points or sections
+6. Be specific about units, timeframes, and data granularity needed
 
-User's Question: {question}
-
-Provide a clear, helpful explanation that:
-1. If no documents are available, explain what specific documents/data are needed
-2. If documents are available, explain what information is required for this disclosure
-3. Reference specific requirements from ESRS
-4. Suggest what to include based on available documents
-5. Give practical examples if helpful
-6. Use markdown formatting for clarity
-
-Be supportive and educational. This is guidance only - the user will write their actual answer separately."""
+This is educational guidance - not the actual disclosure answer."""
         
         response = await sync_to_async(
             lambda: openai_service.client.chat.completions.create(

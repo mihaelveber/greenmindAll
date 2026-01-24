@@ -807,6 +807,36 @@ async def get_dashboard_statistics(request):
     return {'statistics': stats}
 
 
+@api.get("/esrs/confidence-scores", auth=JWTAuth())
+async def get_confidence_scores(request):
+    """Get confidence scores for all answered questions"""
+    from accounts.models import ESRSUserResponse, ESRSDisclosure
+    from django.db.models import Q
+    
+    def get_scores():
+        # Get all answered responses with confidence scores
+        responses = ESRSUserResponse.objects.filter(
+            user=request.auth,
+            confidence_score__isnull=False
+        ).filter(
+            Q(ai_answer__isnull=False) | Q(manual_answer__isnull=False)
+        ).select_related('disclosure').order_by('disclosure__code')
+        
+        result = []
+        for response in responses:
+            result.append({
+                'disclosure_code': response.disclosure.code,
+                'disclosure_name': response.disclosure.name,
+                'confidence_score': round(response.confidence_score, 1),
+                'answered_at': response.updated_at.isoformat() if response.updated_at else None
+            })
+        
+        return result
+    
+    scores = await sync_to_async(get_scores)()
+    return {'confidence_scores': scores}
+
+
 @api.get("/esrs/categories", response=list[ESRSCategorySchema], auth=JWTAuth())
 async def list_esrs_categories(request):
     """Pridobi vse ESRS kategorije"""

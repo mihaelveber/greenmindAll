@@ -100,6 +100,75 @@
         </n-card>
       </n-gi>
 
+      <!-- Confidence Scores Chart -->
+      <n-gi :span="24" v-if="confidenceScores.length > 0">
+        <n-card :bordered="false">
+          <template #header>
+            <div>
+              <h4 class="card-title">📊 Answer Confidence Levels</h4>
+              <p class="card-category">AI confidence score for each answered question</p>
+            </div>
+          </template>
+          <div style="height: 400px; overflow-x: auto; overflow-y: hidden;">
+            <div :style="{ width: Math.max(confidenceScores.length * 50, 800) + 'px', height: '100%', position: 'relative' }">
+              <svg :width="Math.max(confidenceScores.length * 50, 800)" height="350" style="display: block;">
+                <!-- Y-axis labels -->
+                <text x="30" y="30" text-anchor="end" font-size="12" fill="#9A9A9A">100%</text>
+                <text x="30" y="105" text-anchor="end" font-size="12" fill="#9A9A9A">75%</text>
+                <text x="30" y="180" text-anchor="end" font-size="12" fill="#9A9A9A">50%</text>
+                <text x="30" y="255" text-anchor="end" font-size="12" fill="#9A9A9A">25%</text>
+                <text x="30" y="330" text-anchor="end" font-size="12" fill="#9A9A9A">0%</text>
+                
+                <!-- Grid lines -->
+                <line x1="40" y1="30" :x2="Math.max(confidenceScores.length * 50, 800) - 10" y2="30" stroke="#e0e0e0" stroke-width="1" />
+                <line x1="40" y1="105" :x2="Math.max(confidenceScores.length * 50, 800) - 10" y2="105" stroke="#e0e0e0" stroke-width="1" />
+                <line x1="40" y1="180" :x2="Math.max(confidenceScores.length * 50, 800) - 10" y2="180" stroke="#e0e0e0" stroke-width="1" />
+                <line x1="40" y1="255" :x2="Math.max(confidenceScores.length * 50, 800) - 10" y2="255" stroke="#e0e0e0" stroke-width="1" />
+                <line x1="40" y1="330" :x2="Math.max(confidenceScores.length * 50, 800) - 10" y2="330" stroke="#e0e0e0" stroke-width="1" />
+                
+                <!-- Bars -->
+                <g v-for="(score, index) in confidenceScores" :key="score.disclosure_code">
+                  <rect
+                    :x="50 + index * 50"
+                    :y="330 - (score.confidence_score * 3)"
+                    width="35"
+                    :height="score.confidence_score * 3"
+                    :fill="getConfidenceColor(score.confidence_score)"
+                    rx="3"
+                  />
+                  <text
+                    :x="50 + index * 50 + 17.5"
+                    y="345"
+                    text-anchor="middle"
+                    font-size="10"
+                    fill="#666"
+                    transform="rotate(-45, ${50 + index * 50 + 17.5}, 345)"
+                  >
+                    {{ score.disclosure_code }}
+                  </text>
+                  <text
+                    :x="50 + index * 50 + 17.5"
+                    :y="320 - (score.confidence_score * 3)"
+                    text-anchor="middle"
+                    font-size="11"
+                    font-weight="600"
+                    :fill="getConfidenceColor(score.confidence_score)"
+                  >
+                    {{ Math.round(score.confidence_score) }}%
+                  </text>
+                </g>
+              </svg>
+            </div>
+          </div>
+          <template #footer>
+            <hr />
+            <div class="stats">
+              <i class="ti-check"></i> {{ confidenceScores.length }} answers with confidence scores
+            </div>
+          </template>
+        </n-card>
+      </n-gi>
+
       <!-- Individual cards for each category - Full Width Row -->
       <n-gi :span="24">
         <n-grid :cols="4" :x-gap="24">
@@ -180,12 +249,20 @@ interface AITask {
   updated_at: string
 }
 
+interface ConfidenceScore {
+  disclosure_code: string
+  disclosure_name: string
+  confidence_score: number
+  answered_at: string | null
+}
+
 const router = useRouter()
 const message = useMessage()
 
 const loadingStats = ref(false)
 const statistics = ref<CategoryStatistic[]>([])
 const standardTypes = ref<StandardType[]>([])
+const confidenceScores = ref<ConfidenceScore[]>([])
 const exportingPDF = ref(false)
 const exportingWord = ref(false)
 
@@ -215,6 +292,21 @@ const loadStandardTypes = async () => {
     message.error('Failed to load standard types')
     console.error(error)
   }
+}
+
+const loadConfidenceScores = async () => {
+  try {
+    const response = await api.get('/esrs/confidence-scores')
+    confidenceScores.value = response.data.confidence_scores
+  } catch (error) {
+    console.error('Failed to load confidence scores:', error)
+  }
+}
+
+const getConfidenceColor = (score: number): string => {
+  if (score >= 70) return '#54d944'
+  if (score >= 50) return '#f39c12'
+  return '#e74c3c'
 }
 
 const navigateToCategory = (categoryId: number) => {
@@ -347,7 +439,7 @@ const exportWord = async () => {
 }
 
 onMounted(async () => {
-  await Promise.all([loadStatistics(), loadStandardTypes()])
+  await Promise.all([loadStatistics(), loadStandardTypes(), loadConfidenceScores()])
   startPolling()
 })
 

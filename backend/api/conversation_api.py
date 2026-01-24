@@ -433,24 +433,15 @@ Return only the questions, one per line, without numbering or explanations."""
         
         # Generate AI response
         openai_service = OpenAIService()
-        system_prompt = f"""You are an expert ESRS (European Sustainability Reporting Standards) consultant.
+        system_prompt = f"""You are an ESRS expert consultant.
         
 Disclosure: {thread.disclosure.code} - {thread.disclosure.name}
-Requirement: {thread.disclosure.requirement_text}
 
-COMPANY DOCUMENTS WITH ACTUAL DATA:
+DOCUMENTS:
 {document_context}
 
-CRITICAL INSTRUCTIONS:
-1. If the documents above DO NOT contain sufficient information to answer the user's question, you MUST respond with:
-   "⚠️ INSUFFICIENT INFORMATION: The available documents do not contain the information needed to answer your question. Please upload relevant documents or provide additional context."
-2. DO NOT make up, assume, or provide generic answers when documents lack specific information
-3. ONLY use information explicitly present in the documents above
-4. The documents contain REAL company data including numerical values, percentages, and statistics
-5. When you see data like "value | 0.267 | 0.26 | 0.25" these are actual metrics for years 2021, 2022, 2023
-6. ALWAYS cite exact numbers from the documents in your response
-7. Format numerical data clearly in tables or bullet points
-8. If the user asks for specific metrics, search the document content above carefully for those exact values"""
+CRITICAL: If documents lack info, respond: "⚠️ INSUFFICIENT INFORMATION: Documents missing [specific data]. Please upload relevant files."
+ONLY use information from documents above. Include exact numbers/data."""
         
         # Call OpenAI API
         messages_for_api = [{"role": "system", "content": system_prompt}]

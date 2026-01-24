@@ -197,8 +197,8 @@
                       </n-alert>
                     </div>
 
-                    <!-- AI Generation Progress -->
-                    <div v-if="aiTaskStatus[disclosure.id]" style="margin-top: 16px;">
+                    <!-- AI Generation Progress - Only show when task is in progress -->
+                    <div v-if="aiTaskStatus[disclosure.id] && aiTaskStatus[disclosure.id].status !== 'completed'" style="margin-top: 16px;">
                       <n-alert type="info" :title="`Generating AI Answer - ${aiTaskStatus[disclosure.id].progress}%`">
                         <n-space vertical :size="8">
                           <n-text>Status: {{ aiTaskStatus[disclosure.id].status }}</n-text>
@@ -212,9 +212,9 @@
                       </n-alert>
                     </div>
 
-                    <!-- AI Thinking Process (TIER RAG Steps) -->
+                    <!-- AI Thinking Process (TIER RAG Steps + Reasoning Summary) -->
                     <ThinkingProcess
-                      v-if="aiTaskStatus[disclosure.id] && aiTaskStatus[disclosure.id].processing_steps"
+                      v-if="aiTaskStatus[disclosure.id] && (aiTaskStatus[disclosure.id].processing_steps || aiTaskStatus[disclosure.id].reasoning_summary)"
                       :steps="aiTaskStatus[disclosure.id].processing_steps || []"
                       :reasoning-summary="aiTaskStatus[disclosure.id].reasoning_summary"
                       style="margin-top: 16px;"
@@ -527,8 +527,8 @@
                       </n-alert>
                     </div>
 
-                    <!-- AI Generation Progress -->
-                    <div v-if="aiTaskStatus[subDisclosure.id]" style="margin-top: 16px;">
+                    <!-- AI Generation Progress - Only show when task is in progress -->
+                    <div v-if="aiTaskStatus[subDisclosure.id] && aiTaskStatus[subDisclosure.id].status !== 'completed'" style="margin-top: 16px;">
                       <n-alert type="info" :title="`Generating AI Answer - ${aiTaskStatus[subDisclosure.id].progress}%`">
                         <n-space vertical :size="8">
                           <n-text>Status: {{ aiTaskStatus[subDisclosure.id].status }}</n-text>
@@ -542,9 +542,9 @@
                       </n-alert>
                     </div>
 
-                    <!-- AI Thinking Process (TIER RAG Steps) -->
+                    <!-- AI Thinking Process (TIER RAG Steps + Reasoning Summary) -->
                     <ThinkingProcess
-                      v-if="aiTaskStatus[subDisclosure.id] && aiTaskStatus[subDisclosure.id].processing_steps"
+                      v-if="aiTaskStatus[subDisclosure.id] && (aiTaskStatus[subDisclosure.id].processing_steps || aiTaskStatus[subDisclosure.id].reasoning_summary)"
                       :steps="aiTaskStatus[subDisclosure.id].processing_steps || []"
                       :reasoning-summary="aiTaskStatus[subDisclosure.id].reasoning_summary"
                       style="margin-top: 16px;"
@@ -2566,7 +2566,8 @@ const pollTaskStatus = async (taskId: string, disclosureId: number) => {
         delete pollingIntervals.value[taskId]
       }
       loadingAI.value[disclosureId] = false
-      delete aiTaskStatus.value[disclosureId]
+      // IMPORTANT: Don't delete aiTaskStatus - keep reasoning_summary and processing_steps visible!
+      // Only mark as completed so progress bar disappears
       
       if (status.status === 'completed') {
         // Final step: Completed!
@@ -2598,6 +2599,8 @@ const pollTaskStatus = async (taskId: string, disclosureId: number) => {
           console.error('❌ Failed to reload linked documents:', error)
         }
       } else {
+        // On failure, delete task status since no thinking to show
+        delete aiTaskStatus.value[disclosureId]
         message.error(`AI generation failed: ${status.error_message || 'Unknown error'}`)
         showThinkingProgress.value[disclosureId] = false
       }

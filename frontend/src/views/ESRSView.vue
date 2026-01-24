@@ -191,8 +191,8 @@
                       </n-alert>
                     </div>
 
-                    <!-- AI Generation Progress -->
-                    <div v-if="aiTaskStatus[disclosure.id]" style="margin-top: 16px;">
+                    <!-- AI Generation Progress - Only show when task is in progress -->
+                    <div v-if="aiTaskStatus[disclosure.id] && aiTaskStatus[disclosure.id].status !== 'completed'" style="margin-top: 16px;">
                       <n-alert type="info" :title="`Generating AI Answer - ${aiTaskStatus[disclosure.id].progress}%`">
                         <n-space vertical :size="8">
                           <n-text>Status: {{ aiTaskStatus[disclosure.id].status }}</n-text>
@@ -204,6 +204,25 @@
                           />
                         </n-space>
                       </n-alert>
+                    </div>
+
+                    <!-- AI Reasoning/Thinking Process Section (OpenAI o1 / Claude Extended Thinking) -->
+                    <div v-if="aiTaskStatus[disclosure.id]?.reasoning_summary" style="margin-top: 16px;">
+                      <n-collapse>
+                        <n-collapse-item title="🧠 AI Thinking Process" name="thinking">
+                          <template #header-extra>
+                            <n-tag type="info" size="small" :bordered="false">
+                              Reasoning Model
+                            </n-tag>
+                          </template>
+                          <n-alert type="default" :bordered="false">
+                            <div style="white-space: pre-wrap; max-height: 300px; overflow-y: auto; font-family: monospace; font-size: 13px; line-height: 1.6;">{{ aiTaskStatus[disclosure.id].reasoning_summary }}</div>
+                          </n-alert>
+                          <n-text depth="3" style="font-size: 12px; margin-top: 8px; display: block;">
+                            💡 This shows the AI's internal reasoning before generating the final answer. Available for OpenAI o1 models (gpt-5) and Claude 4+ models with Extended Thinking.
+                          </n-text>
+                        </n-collapse-item>
+                      </n-collapse>
                     </div>
 
                     <!-- AI Answer Section -->
@@ -608,8 +627,8 @@
                       </n-alert>
                     </div>
 
-                    <!-- AI Generation Progress -->
-                    <div v-if="aiTaskStatus[subDisclosure.id]" style="margin-top: 16px;">
+                    <!-- AI Generation Progress - Only show when task is in progress -->
+                    <div v-if="aiTaskStatus[subDisclosure.id] && aiTaskStatus[subDisclosure.id].status !== 'completed'" style="margin-top: 16px;">
                       <n-alert type="info" :title="`Generating AI Answer - ${aiTaskStatus[subDisclosure.id].progress}%`">
                         <n-space vertical :size="8">
                           <n-text>Status: {{ aiTaskStatus[subDisclosure.id].status }}</n-text>
@@ -621,6 +640,25 @@
                           />
                         </n-space>
                       </n-alert>
+                    </div>
+
+                    <!-- AI Reasoning/Thinking Process Section (OpenAI o1 / Claude Extended Thinking) -->
+                    <div v-if="aiTaskStatus[subDisclosure.id]?.reasoning_summary" style="margin-top: 16px;">
+                      <n-collapse>
+                        <n-collapse-item title="🧠 AI Thinking Process" name="thinking">
+                          <template #header-extra>
+                            <n-tag type="info" size="small" :bordered="false">
+                              Reasoning Model
+                            </n-tag>
+                          </template>
+                          <n-alert type="default" :bordered="false">
+                            <div style="white-space: pre-wrap; max-height: 300px; overflow-y: auto; font-family: monospace; font-size: 13px; line-height: 1.6;">{{ aiTaskStatus[subDisclosure.id].reasoning_summary }}</div>
+                          </n-alert>
+                          <n-text depth="3" style="font-size: 12px; margin-top: 8px; display: block;">
+                            💡 This shows the AI's internal reasoning before generating the final answer. Available for OpenAI o1 models (gpt-5) and Claude 4+ models with Extended Thinking.
+                          </n-text>
+                        </n-collapse-item>
+                      </n-collapse>
                     </div>
 
                     <!-- AI Answer -->
@@ -1597,7 +1635,7 @@ const aiExplainAnswer = ref('')
 const currentExplainDisclosure = ref<any>(null)
 const loadingExplain = ref(false)
 
-const aiTaskStatus = ref<Record<number, { progress: number; status: string; task_id: string }>>({})
+const aiTaskStatus = ref<Record<number, { progress: number; status: string; task_id: string; reasoning_summary?: string }>>({})
 const pollingIntervals = ref<Record<string, ReturnType<typeof setInterval>>>({})
 const aiTemperatures = ref<Record<number, number>>({})
 
@@ -2333,7 +2371,8 @@ const pollTaskStatus = async (taskId: string, disclosureId: number) => {
     aiTaskStatus.value[disclosureId] = {
       progress: status.progress,
       status: status.status,
-      task_id: taskId
+      task_id: taskId,
+      reasoning_summary: status.reasoning_summary // Add reasoning summary from backend
     }
     
     // If task is completed or failed, stop polling and reload response
@@ -2343,7 +2382,8 @@ const pollTaskStatus = async (taskId: string, disclosureId: number) => {
         delete pollingIntervals.value[taskId]
       }
       loadingAI.value[disclosureId] = false
-      delete aiTaskStatus.value[disclosureId]
+      // IMPORTANT: Don't delete aiTaskStatus - keep reasoning_summary visible!
+      // Only hide progress bar by setting progress to 100 and status to 'completed'
       
       if (status.status === 'completed') {
         message.success(`AI answer generated for ${status.disclosure_code}!`)
@@ -2352,6 +2392,8 @@ const pollTaskStatus = async (taskId: string, disclosureId: number) => {
         disclosureResponses.value[disclosureId] = responseData.data
       } else {
         message.error(`AI generation failed: ${status.error_message || 'Unknown error'}`)
+        // On failure, we can delete the task status
+        delete aiTaskStatus.value[disclosureId]
       }
     }
   } catch (error: any) {

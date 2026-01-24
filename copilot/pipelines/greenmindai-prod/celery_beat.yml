@@ -1,0 +1,7 @@
+version: 0.2
+
+phases:
+  build:
+    commands:
+      - echo "Deploying Celery Beat..."
+      - aws ecs update-service --cluster $COPILOT_CLUSTER_NAME --service celery-beat --force-new-deployment --region $AWS_REGION

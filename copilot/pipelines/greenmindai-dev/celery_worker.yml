@@ -1,0 +1,7 @@
+version: 0.2
+
+phases:
+  build:
+    commands:
+      - echo "Deploying Celery Worker..."
+      - aws ecs update-service --cluster $COPILOT_CLUSTER_NAME --service celery-worker --force-new-deployment --region $AWS_REGION

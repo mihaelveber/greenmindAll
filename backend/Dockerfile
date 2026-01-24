@@ -22,12 +22,12 @@ RUN apt-get update && apt-get install -y \
     shared-mime-info \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
+COPY backend/requirements.txt .
 RUN pip install --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt && \
     rm -rf /tmp/* /root/.cache
 
-COPY . .
+COPY backend/ .
 
 EXPOSE 8090
 

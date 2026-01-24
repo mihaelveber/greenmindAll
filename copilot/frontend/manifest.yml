@@ -1,0 +1,62 @@
+name: frontend
+type: Load Balanced Web Service
+
+# Configuration for your containers and service.
+image:
+  build:
+    dockerfile: ./frontend/Dockerfile
+    context: .
+  port: 5173
+
+http:
+  path: '/'
+  healthcheck:
+    path: '/'
+    success_codes: '200-499'
+    port: 5173
+    healthy_threshold: 3
+    unhealthy_threshold: 10
+    interval: 300s
+    timeout: 60s
+
+variables:
+  NODE_ENV: production
+
+environments:
+  # Development environment #####################################################
+  dev:
+    http:
+      alias: app-dev.greenmindai.net
+    
+    count: 1
+    deployment:
+      rolling: 'default'
+    cpu: 1024       # Number of CPU units for the task.
+    memory: 2048    # Amount of memory in MiB used by the task.
+    platform: linux/x86_64
+    exec: true
+    env_file: copilot/environments/dev/dev.env
+    
+    network:
+      connect: true
+      vpc:
+        placement: 'private'
+
+  # Production environment #######################################################
+  prod:
+    http:
+      alias: app.greenmindai.net
+    
+    count: 2
+    deployment:
+      rolling: 'default'
+    cpu: 1024       # Number of CPU units for the task.
+    memory: 2048    # Amount of memory in MiB used by the task.
+    platform: linux/x86_64
+    exec: true
+    env_file: copilot/environments/prod/prod.env
+    
+    network:
+      connect: true
+      vpc:
+        placement: 'private'

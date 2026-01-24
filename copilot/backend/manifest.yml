@@ -1,0 +1,77 @@
+name: backend
+type: Load Balanced Web Service
+
+# Configuration for your containers and service.
+image:
+  build:
+    dockerfile: backend/Dockerfile
+    context: .
+  port: 8090
+  healthcheck:
+    command: ["CMD-SHELL", "curl -f http://localhost:8090/api/healthcheck/ || exit 1"]
+    interval: 10s
+    retries: 3
+    timeout: 5s
+    start_period: 90s
+
+command: gunicorn config.wsgi:application --bind 0.0.0.0:8090 --workers 4 --worker-class uvicorn.workers.UvicornWorker --timeout 120
+
+http:
+  path: '/api/*'
+  healthcheck:
+    path: '/api/healthcheck/'
+    success_codes: '200-499'
+    port: 8090
+    healthy_threshold: 3
+    unhealthy_threshold: 10
+    interval: 300s
+    timeout: 60s
+
+secrets:
+    DATABASE_URL: /copilot/${COPILOT_APPLICATION_NAME}/${COPILOT_ENVIRONMENT_NAME}/secrets/DATABASE_URL
+    DJANGO_SECRET_KEY: /copilot/${COPILOT_APPLICATION_NAME}/${COPILOT_ENVIRONMENT_NAME}/secrets/DJANGO_SECRET_KEY
+    OPENAI_API_KEY: /copilot/${COPILOT_APPLICATION_NAME}/${COPILOT_ENVIRONMENT_NAME}/secrets/OPENAI_API_KEY
+    ANTHROPIC_API_KEY: /copilot/${COPILOT_APPLICATION_NAME}/${COPILOT_ENVIRONMENT_NAME}/secrets/ANTHROPIC_API_KEY
+    GOOGLE_GEMINI_API_KEY: /copilot/${COPILOT_APPLICATION_NAME}/${COPILOT_ENVIRONMENT_NAME}/secrets/GOOGLE_GEMINI_API_KEY
+
+variables:
+  DJANGO_SETTINGS_MODULE: config.settings
+
+environments:
+  # Development environment #####################################################
+  dev:
+    http:
+      alias: api-dev.greenmindai.net
+    
+    count: 1
+    deployment:
+      rolling: 'default'
+    cpu: 2048       # Number of CPU units for the task.
+    memory: 4096    # Amount of memory in MiB used by the task.
+    platform: linux/x86_64
+    exec: true      # Enable running commands in your container.
+    env_file: copilot/environments/dev/dev.env
+    
+    network:
+      connect: true
+      vpc:
+        placement: 'private'
+
+  # Production environment #######################################################
+  prod:
+    http:
+      alias: api.greenmindai.net
+    
+    count: 2
+    deployment:
+      rolling: 'default'
+    cpu: 2048       # Number of CPU units for the task.
+    memory: 4096    # Amount of memory in MiB used by the task.
+    platform: linux/x86_64
+    exec: true
+    env_file: copilot/environments/prod/prod.env
+    
+    network:
+      connect: true
+      vpc:
+        placement: 'private'

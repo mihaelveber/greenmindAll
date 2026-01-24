@@ -1,0 +1,21 @@
+version: 1
+
+name: greenmindai-dev
+
+source:
+  provider: GitHub
+  properties:
+    branch: develop
+    repository: https://github.com/YOUR_ORG/greenmindai
+    # connection_name: github-connection
+
+stages:
+  - name: dev
+    pre_deployments:
+      db_migrations:
+        buildspec: copilot/pipelines/greenmindai-dev/db_migrations.yml
+    post_deployments:
+      celery_beat:
+        buildspec: copilot/pipelines/greenmindai-dev/celery_beat.yml
+      celery_worker:
+        buildspec: copilot/pipelines/greenmindai-dev/celery_worker.yml

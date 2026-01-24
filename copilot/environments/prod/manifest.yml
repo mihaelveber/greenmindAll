@@ -1,0 +1,24 @@
+name: prod
+type: Environment
+
+observability:
+  container_insights: true
+
+# Configure your VPC - you'll need to create this or use existing one
+# network:
+#   vpc:
+#     id: 'vpc-xxxxx'
+#     subnets:
+#       public:
+#         - id: 'subnet-xxxxx'
+#         - id: 'subnet-xxxxx'
+#       private:
+#         - id: 'subnet-xxxxx'
+#         - id: 'subnet-xxxxx'
+
+# HTTPS certificate configuration
+# After importing your certificate to ACM, uncomment and configure:
+# http:
+#   public:
+#     certificates:
+#       - arn:aws:acm:eu-central-1:ACCOUNT_ID:certificate/CERT_ID

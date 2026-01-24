@@ -442,12 +442,15 @@ COMPANY DOCUMENTS WITH ACTUAL DATA:
 {document_context}
 
 CRITICAL INSTRUCTIONS:
-1. The documents above contain REAL company data including numerical values, percentages, and statistics
-2. You MUST extract and include specific numbers from the documents in your response
-3. When you see data like "value | 0.267 | 0.26 | 0.25" these are actual metrics for years 2021, 2022, 2023
-4. ALWAYS cite exact numbers from the documents - never say "no data available" if numbers are present above
-5. Format numerical data clearly in tables or bullet points
-6. If the user asks for specific metrics, search the document content above carefully for those exact values"""
+1. If the documents above DO NOT contain sufficient information to answer the user's question, you MUST respond with:
+   "⚠️ INSUFFICIENT INFORMATION: The available documents do not contain the information needed to answer your question. Please upload relevant documents or provide additional context."
+2. DO NOT make up, assume, or provide generic answers when documents lack specific information
+3. ONLY use information explicitly present in the documents above
+4. The documents contain REAL company data including numerical values, percentages, and statistics
+5. When you see data like "value | 0.267 | 0.26 | 0.25" these are actual metrics for years 2021, 2022, 2023
+6. ALWAYS cite exact numbers from the documents in your response
+7. Format numerical data clearly in tables or bullet points
+8. If the user asks for specific metrics, search the document content above carefully for those exact values"""
         
         # Call OpenAI API
         messages_for_api = [{"role": "system", "content": system_prompt}]
@@ -734,6 +737,10 @@ async def regenerate_message(request, message_id: int, data: RegenerateMessageSc
         # Generate new response
         openai_service = OpenAIService()
         system_prompt = f"""You are an expert ESRS consultant.
+
+CRITICAL: If the available documents DO NOT contain sufficient information to answer the question, respond with:
+"⚠️ INSUFFICIENT INFORMATION: The available documents do not contain the necessary information. Please upload relevant documents."
+DO NOT provide generic or assumed answers without document support.
         
 Disclosure: {thread.disclosure.code} - {thread.disclosure.name}
 Requirement: {thread.disclosure.requirement_text}
@@ -1039,6 +1046,10 @@ async def ai_explain(request, disclosure_id: int, data: AIExplainSchema):
         openai_service = OpenAIService()
         system_prompt = f"""You are an expert ESRS (European Sustainability Reporting Standards) consultant.
 
+CRITICAL: If you DO NOT have sufficient information to provide a complete answer, clearly state:
+"⚠️ INSUFFICIENT INFORMATION: I cannot provide a complete answer without [specific documents/data needed]. Please upload relevant documents."
+DO NOT provide generic guidance without specific document support.
+
 Your task is to help the user understand what they need to include in their answer for this disclosure.
 
 Disclosure: {disclosure.code} - {disclosure.name}
@@ -1050,11 +1061,12 @@ Available Documents:
 User's Question: {question}
 
 Provide a clear, helpful explanation that:
-1. Explains what information is required for this disclosure
-2. References specific requirements from ESRS
-3. Suggests what to include based on available documents (if any)
-4. Gives practical examples if helpful
-5. Uses markdown formatting for clarity
+1. If no documents are available, explain what specific documents/data are needed
+2. If documents are available, explain what information is required for this disclosure
+3. Reference specific requirements from ESRS
+4. Suggest what to include based on available documents
+5. Give practical examples if helpful
+6. Use markdown formatting for clarity
 
 Be supportive and educational. This is guidance only - the user will write their actual answer separately."""
         

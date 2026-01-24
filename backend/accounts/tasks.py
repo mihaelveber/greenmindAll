@@ -321,16 +321,23 @@ If the documents contain data like percentages (e.g., 0.70 = 70%), present them 
 
 Your task is to write a COMPLETE ANSWER for the disclosure requirement using the provided company documents.
 
-INSTRUCTIONS:
+CRITICAL INSTRUCTIONS:
+1. ONLY use information from the provided documents - DO NOT make up or assume information
+2. If you DO NOT have sufficient information in the documents to answer the requirement, you MUST respond with:
+   "⚠️ INSUFFICIENT INFORMATION: The provided documents do not contain sufficient information to answer this disclosure requirement. Please upload relevant documents containing [list what specific information is missing]."
+3. NEVER provide generic, hypothetical, or assumed answers when documents lack the required information
+4. If documents contain partial information, clearly state what is available and what is missing
+
+WHEN YOU HAVE SUFFICIENT INFORMATION:
 1. EXTRACT and USE actual data, numbers, and facts from the provided documents
 2. Write the answer AS IF you are writing the actual sustainability report section
 3. Include specific numbers, percentages, dates, and statistics when available
 4. If documents contain numerical data (like 0.70), present it as percentages (70%)
 5. Structure your answer clearly with sections, tables, or bullet points as appropriate
-6. If certain required information is not available in the documents, clearly note what is missing
-7. Be comprehensive - cover all aspects of the disclosure requirement
+6. Be comprehensive - cover all aspects of the disclosure requirement
 
-Write a professional answer that directly addresses the disclosure requirement using document data."""
+Write a professional answer that directly addresses the disclosure requirement using document data.
+If you cannot answer based on available documents, clearly state "INSUFFICIENT INFORMATION" as instructed above."""
             
             with OpenAIUsageTracker(user.id, org_owner.id, 'ai_answer', disclosure.id) as tracker:
                 if is_o1_model:
@@ -473,7 +480,12 @@ Write a professional answer that directly addresses the disclosure requirement u
             
             # Build simpler prompt without document context
             system_prompt = f"""You are an ESRS (European Sustainability Reporting Standards) expert assistant.
-Generate a comprehensive answer for the following disclosure requirement.
+
+CRITICAL INSTRUCTION:
+- If you DO NOT have sufficient information to answer this requirement, you MUST respond with:
+  "⚠️ INSUFFICIENT INFORMATION: I cannot provide an accurate answer without relevant company documents. Please upload documents containing [list specific information needed]."
+- DO NOT provide generic, hypothetical, or assumed answers
+- ONLY answer if you have concrete, specific information available
 
 DISCLOSURE: {disclosure.code} - {disclosure.name}
 CATEGORY: {disclosure.standard.category.name}

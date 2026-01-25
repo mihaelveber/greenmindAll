@@ -1,0 +1,34 @@
+name: redis
+type: Backend Service
+
+image:
+  build:
+    dockerfile: Dockerfile.redis
+    context: .
+  port: 6379
+
+variables:
+  # Redis runs on default port 6379
+
+environments:
+  dev:
+    platform: linux/x86_64
+    count: 1
+    cpu: 256
+    memory: 512
+    exec: true
+    network:
+      connect: true
+      vpc:
+        placement: 'private'
+
+  prod:
+    platform: linux/x86_64
+    count: 1
+    cpu: 512
+    memory: 1024
+    exec: true
+    network:
+      connect: true
+      vpc:
+        placement: 'private'

@@ -4,7 +4,7 @@ type: Load Balanced Web Service
 # Configuration for your containers and service.
 image:
   build:
-    dockerfile: ./frontend/Dockerfile
+    dockerfile: frontend/Dockerfile
     context: .
   port: 5173
 
@@ -25,9 +25,6 @@ variables:
 environments:
   # Development environment #####################################################
   dev:
-    http:
-      alias: app-dev.greenmindai.net
-    
     count: 1
     deployment:
       rolling: 'default'
@@ -44,9 +41,6 @@ environments:
 
   # Production environment #######################################################
   prod:
-    http:
-      alias: app.greenmindai.net
-    
     count: 2
     deployment:
       rolling: 'default'

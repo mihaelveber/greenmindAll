@@ -124,7 +124,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # CORS
 CORS_ALLOWED_ORIGINS = config(
     'CORS_ALLOWED_ORIGINS',
-    default='http://localhost:3000,http://localhost:5173,http://localhost:5174,http://localhost:8090',
+    default='http://localhost:3000,http://localhost:5173,http://localhost:5174,http://localhost:8090,http://18.192.13.177:5173,http://18.192.13.177:5174,http://18.192.13.177:8090',
     cast=Csv()
 )
 CORS_ALLOW_CREDENTIALS = True

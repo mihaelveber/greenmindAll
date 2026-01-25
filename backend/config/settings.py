@@ -6,7 +6,11 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = config('SECRET_KEY', default='django-insecure-dev-key-please-change')
 DEBUG = config('DEBUG', default=True, cast=bool)
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='*', cast=Csv())
+ALLOWED_HOSTS = config(
+    'ALLOWED_HOSTS',
+    default='localhost,127.0.0.1,0.0.0.0,18.192.13.177,172.31.39.87,63.179.255.173,app.greenmindai.net,api.greenmindai.net,admin.greenmindai.net,greenmindai.net,greenmindai-alb-376848959.eu-central-1.elb.amazonaws.com',
+    cast=Csv()
+)
 
 # Application definition
 INSTALLED_APPS = [
@@ -124,7 +128,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # CORS
 CORS_ALLOWED_ORIGINS = config(
     'CORS_ALLOWED_ORIGINS',
-    default='http://localhost:3000,http://localhost:5173,http://localhost:5174,http://localhost:8090,http://18.192.13.177:5173,http://18.192.13.177:5174,http://18.192.13.177:8090',
+    default='http://localhost:3000,http://localhost:5173,http://localhost:5174,http://localhost:8090,http://18.192.13.177:5173,http://18.192.13.177:5174,http://18.192.13.177:8090,https://greenmindai.net,https://app.greenmindai.net,https://admin.greenmindai.net,https://api.greenmindai.net',
     cast=Csv()
 )
 CORS_ALLOW_CREDENTIALS = True
@@ -144,11 +148,11 @@ CORS_ALLOW_HEADERS = [
 ]
 
 # CSRF
-CSRF_TRUSTED_ORIGINS = [
-    'http://localhost:8090',
-    'http://localhost:5173',
-    'http://localhost:3000',
-]
+CSRF_TRUSTED_ORIGINS = config(
+    'CSRF_TRUSTED_ORIGINS',
+    default='http://localhost:8090,http://localhost:5173,http://localhost:3000,https://greenmindai.net,https://app.greenmindai.net,https://admin.greenmindai.net,https://api.greenmindai.net',
+    cast=Csv()
+)
 
 # Django Allauth
 SITE_ID = 1

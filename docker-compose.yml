@@ -39,7 +39,7 @@ services:
     - 8090:8090
     environment:
     - DEBUG=True
-    - ALLOWED_HOSTS=localhost,127.0.0.1,18.192.13.177,63.179.255.173
+    - ALLOWED_HOSTS=localhost,127.0.0.1,18.192.13.177,172.31.39.87,63.179.255.173,app.greenmindai.net,api.greenmindai.net,admin.greenmindai.net,greenmindai.net,greenmindai-alb-376848959.eu-central-1.elb.amazonaws.com
     - DB_HOST=db
     - DB_PORT=5432
     - DB_NAME=authdb
@@ -48,7 +48,7 @@ services:
     - REDIS_URL=redis://redis:6379/0
     - CELERY_BROKER_URL=redis://redis:6379/0
     - CELERY_RESULT_BACKEND=redis://redis:6379/0
-    - CORS_ALLOWED_ORIGINS=http://18.192.13.177:5173,http://18.192.13.177:5174,http://18.192.13.177:8090,http://63.179.255.173:5173,http://63.179.255.173:5174,http://localhost:3000,http://localhost:5173,http://localhost:5174,http://localhost:8090
+    - CORS_ALLOWED_ORIGINS=http://18.192.13.177:5173,http://18.192.13.177:5174,http://18.192.13.177:8090,http://63.179.255.173:5173,http://63.179.255.173:5174,http://localhost:3000,http://localhost:5173,http://localhost:5174,http://localhost:8090,https://app.greenmindai.net,https://admin.greenmindai.net,https://api.greenmindai.net,https://greenmindai.net
     - OPENAI_API_KEY=${OPENAI_API_KEY}
     depends_on:
       db:

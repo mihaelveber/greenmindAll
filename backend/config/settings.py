@@ -6,7 +6,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = config('SECRET_KEY', default='django-insecure-dev-key-please-change')
 DEBUG = config('DEBUG', default=True, cast=bool)
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1', cast=Csv())
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='*', cast=Csv())
 
 # Application definition
 INSTALLED_APPS = [
@@ -124,11 +124,12 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # CORS
 CORS_ALLOWED_ORIGINS = config(
     'CORS_ALLOWED_ORIGINS',
-    default='http://localhost:3000,http://localhost:5173,http://localhost:5174',
+    default='http://localhost:3000,http://localhost:5173,http://localhost:5174,http://localhost:8090',
     cast=Csv()
 )
 CORS_ALLOW_CREDENTIALS = True
-CORS_ALLOW_ALL_ORIGINS = True  # Dev only - allows all origins
+# Note: CORS_ALLOW_ALL_ORIGINS can't be True if CORS_ALLOWED_ORIGINS is set
+# Use specific origins instead
 CORS_ALLOW_HEADERS = [
     'accept',
     'accept-encoding',
@@ -223,6 +224,7 @@ DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='noreply@greenmind.ai'
 FRONTEND_URL = config('FRONTEND_URL', default='http://localhost:5173')
 
 # Logging Configuration
+DJANGO_LOG_LEVEL = config('DJANGO_LOG_LEVEL', default='INFO')
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
@@ -244,12 +246,17 @@ LOGGING = {
     },
     'root': {
         'handlers': ['console'],
-        'level': 'INFO',
+        'level': DJANGO_LOG_LEVEL,
     },
     'loggers': {
         'django': {
             'handlers': ['console'],
-            'level': 'INFO',
+            'level': DJANGO_LOG_LEVEL,
+            'propagate': False,
+        },
+        'django.db.backends': {
+            'handlers': ['console'],
+            'level': config('DJANGO_DB_LOG_LEVEL', default='WARNING'),
             'propagate': False,
         },
         'api': {

@@ -1,5 +1,173 @@
 from django.core.management.base import BaseCommand
 from accounts.models import ESRSCategory, ESRSStandard, ESRSDisclosure
+from html.parser import HTMLParser
+import re
+import urllib.request
+
+
+ESRS_SOURCE_URL = "https://xbrl.efrag.org/e-esrs/esrs-set1-2023.html"
+
+
+class _ESRSTextExtractor(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self._chunks = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag in {"p", "br", "div", "li", "tr", "h1", "h2", "h3", "h4", "table"}:
+            self._chunks.append("\n")
+
+    def handle_endtag(self, tag):
+        if tag in {"p", "li", "div", "tr", "table"}:
+            self._chunks.append("\n")
+
+    def handle_data(self, data):
+        if data:
+            self._chunks.append(data)
+
+    def get_text(self) -> str:
+        return "".join(self._chunks)
+
+
+def _fetch_esrs_html(url: str) -> str:
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=30) as response:
+        charset = response.headers.get_content_charset() or "utf-8"
+        return response.read().decode(charset, errors="replace")
+
+
+def _html_to_lines(html: str) -> list[str]:
+    parser = _ESRSTextExtractor()
+    parser.feed(html)
+    raw_text = parser.get_text()
+    lines = []
+    for line in raw_text.splitlines():
+        cleaned = re.sub(r"\s+", " ", line.replace("\u2013", "-").replace("\u2014", "-").strip())
+        if cleaned:
+            lines.append(cleaned)
+    return lines
+
+
+def _normalize_section_text(lines: list[str]) -> str:
+    paragraphs = []
+    current = ""
+    prefix_pattern = re.compile(r"^(\d+\.|AR \d+\.|\([a-z]\)|[ivx]+\.)", re.IGNORECASE)
+
+    for line in lines:
+        if line.lower().startswith("disclosure requirement"):
+            continue
+        if prefix_pattern.match(line):
+            if current:
+                paragraphs.append(current.strip())
+            current = line
+        else:
+            if current:
+                current = f"{current} {line}".strip()
+            else:
+                current = line
+
+    if current:
+        paragraphs.append(current.strip())
+
+    return "\n".join(paragraphs).strip()
+
+
+def _extract_lettered_sections(section_text: str) -> dict[str, str]:
+    sections = {}
+    current = None
+    buffer = []
+
+    for line in section_text.splitlines():
+        match = re.match(r"^\(([a-z])\)\s*(.*)$", line.strip(), re.IGNORECASE)
+        if match:
+            if current and buffer:
+                sections[current] = "\n".join(buffer).strip()
+            current = match.group(1).lower()
+            buffer = [line.strip()]
+            continue
+
+        if current:
+            buffer.append(line.strip())
+
+    if current and buffer:
+        sections[current] = "\n".join(buffer).strip()
+
+    return sections
+
+
+def _extract_disclosure_sections(html: str) -> dict[str, str]:
+    heading_pattern = re.compile(
+        r"<p[^>]*class=\"oj-ti-grseq-1\"[^>]*>.*?Disclosure Requirement.*?</p>",
+        re.IGNORECASE | re.DOTALL,
+    )
+    headings = list(heading_pattern.finditer(html))
+    sections_by_code: dict[str, str] = {}
+
+    for index, match in enumerate(headings):
+        heading_html = match.group(0)
+        heading_lines = _html_to_lines(heading_html)
+        heading_text = " ".join(heading_lines)
+        code_match = re.search(r"Disclosure Requirement\s+([A-Z0-9-]+)", heading_text, re.IGNORECASE)
+        if not code_match:
+            continue
+        code = code_match.group(1).upper()
+
+        start = match.end()
+        end = headings[index + 1].start() if index + 1 < len(headings) else len(html)
+        section_html = html[start:end]
+        lines = _html_to_lines(section_html)
+
+        score = sum(1 for line in lines if re.match(r"^\d+\.", line))
+        score += sum(1 for line in lines if re.match(r"^\([a-z]\)", line, re.IGNORECASE))
+        score += sum(1 for line in lines if "The undertaking shall" in line)
+
+        if score == 0:
+            continue
+
+        normalized_text = _normalize_section_text(lines)
+        if not normalized_text:
+            continue
+
+        current = sections_by_code.get(code)
+        if not current or len(normalized_text) > len(current):
+            sections_by_code[code] = normalized_text
+
+    return sections_by_code
+
+
+def _update_disclosures_from_source(url: str) -> int:
+    html = _fetch_esrs_html(url)
+    sections = _extract_disclosure_sections(html)
+    updated = 0
+
+    for code, section_text in sections.items():
+        for disclosure in ESRSDisclosure.objects.filter(code=code):
+            disclosure.requirement_text = section_text
+            disclosure.save(update_fields=["requirement_text"])
+            updated += 1
+
+    sub_code_pattern = re.compile(r"^(?P<parent>[A-Z0-9-]+)(?P<suffix>[a-z])$", re.IGNORECASE)
+    for disclosure in ESRSDisclosure.objects.all():
+        match = sub_code_pattern.match(disclosure.code or "")
+        if not match:
+            continue
+
+        parent_code = match.group("parent").upper()
+        suffix = match.group("suffix").lower()
+        parent_text = sections.get(parent_code)
+        if not parent_text:
+            continue
+
+        lettered = _extract_lettered_sections(parent_text)
+        section_text = lettered.get(suffix)
+        if not section_text:
+            continue
+
+        disclosure.requirement_text = section_text
+        disclosure.save(update_fields=["requirement_text"])
+        updated += 1
+
+    return updated
 
 
 class Command(BaseCommand):
@@ -600,6 +768,14 @@ class Command(BaseCommand):
         total_disclosures += len(other_esrs2)
         
         self.stdout.write(self.style.SUCCESS(f'✓ Created ESRS 1 & 2: {len(esrs1_disclosures) + len(esrs2_disclosures)} disclosures'))
+
+        # Update requirement text from official ESRS source
+        try:
+            self.stdout.write('Updating requirement text from official ESRS source...')
+            updated = _update_disclosures_from_source(ESRS_SOURCE_URL)
+            self.stdout.write(self.style.SUCCESS(f'✓ Updated {updated} disclosures from source'))
+        except Exception as exc:
+            self.stdout.write(self.style.WARNING(f'⚠ ESRS source update failed: {exc}'))
         
         # Summary
         self.stdout.write(self.style.SUCCESS('\n' + '='*60))

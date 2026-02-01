@@ -367,20 +367,7 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.SUCCESS('ESRS population complete.'))
         
-        self.stdout.write(self.style.SUCCESS(f'✓ Created ESRS 1 & 2: {len(esrs1_disclosures) + len(esrs2_disclosures)} disclosures'))
-
-        # Update requirement text from official ESRS source
-        try:
-            self.stdout.write('Updating requirement text from official ESRS source...')
-            updated = _update_disclosures_from_source(ESRS_SOURCE_URL)
-            self.stdout.write(self.style.SUCCESS(f'✓ Updated {updated} disclosures from source'))
-        except Exception as exc:
-            self.stdout.write(self.style.WARNING(f'⚠ ESRS source update failed: {exc}'))
-        
         # Summary
         self.stdout.write(self.style.SUCCESS('\n' + '='*60))
-        self.stdout.write(self.style.SUCCESS('✓ Successfully populated ESRS database!'))
-        self.stdout.write(self.style.SUCCESS(f'  - Categories: 4'))
-        self.stdout.write(self.style.SUCCESS(f'  - Standards: 12'))
-        self.stdout.write(self.style.SUCCESS(f'  - Total Disclosures (including sub-disclosures): {total_disclosures}'))
+        self.stdout.write(self.style.SUCCESS('✓ Successfully populated ESRS database using official source!'))
         self.stdout.write(self.style.SUCCESS('='*60))

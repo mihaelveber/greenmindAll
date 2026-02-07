@@ -389,9 +389,9 @@ const languageOptions = [
 
 const pageTitle = computed(() => {
   if (route.name === 'dashboard') return t('dashboard.title')
-  if (route.name === 'standards') return `${route.params.standardType} Reporting`
+  if (route.name === 'standards') return t('nav.standardsReporting', { standard: route.params.standardType })
   if (route.name === 'documents') return t('nav.documents')
-  if (route.name === 'team') return 'Team Management'
+  if (route.name === 'team') return t('nav.teamManagement')
   return 'GreenMind AI'
 })
 
@@ -429,7 +429,7 @@ const menuOptions = computed(() => {
     // ESRS group
     ...(groupedStandards.ESRS.length > 0 ? [{
       type: 'group',
-      label: 'ESRS',
+      label: t('nav.groupEsrs'),
       key: 'group-esrs',
       children: groupedStandards.ESRS.map((standard: any) => ({
         label: `${standard.code}: ${standard.name}`,
@@ -440,7 +440,7 @@ const menuOptions = computed(() => {
     // Environmental group
     ...(groupedStandards.E.length > 0 ? [{
       type: 'group',
-      label: 'Environmental',
+      label: t('nav.groupEnvironmental'),
       key: 'group-e',
       children: groupedStandards.E.map((standard: any) => ({
         label: `${standard.code}: ${standard.name}`,
@@ -451,7 +451,7 @@ const menuOptions = computed(() => {
     // Social group
     ...(groupedStandards.S.length > 0 ? [{
       type: 'group',
-      label: 'Social',
+      label: t('nav.groupSocial'),
       key: 'group-s',
       children: groupedStandards.S.map((standard: any) => ({
         label: `${standard.code}: ${standard.name}`,
@@ -462,7 +462,7 @@ const menuOptions = computed(() => {
     // Governance group
     ...(groupedStandards.G.length > 0 ? [{
       type: 'group',
-      label: 'Governance',
+      label: t('nav.groupGovernance'),
       key: 'group-g',
       children: groupedStandards.G.map((standard: any) => ({
         label: `${standard.code}: ${standard.name}`,
@@ -482,7 +482,7 @@ const menuOptions = computed(() => {
     }))
 
   const esrsReportingMenu = esrsSubMenu.length > 0 ? [{
-    label: 'ESRS Reporting',
+    label: t('nav.esrsReporting'),
     key: 'esrs-reporting',
     icon: () => h(NIcon, null, { default: () => h(ClipboardOutline) }),
     children: esrsSubMenu
@@ -493,18 +493,13 @@ const menuOptions = computed(() => {
 
   const otherMenus = [
     {
-      label: 'Bulk AI Processing',
-      key: 'bulk-processing',
-      icon: () => h(NIcon, null, { default: () => h(CloudUploadOutline) })
-    },
-    {
       label: t('nav.documents'),
       key: 'documents',
       icon: () => h(NIcon, null, { default: () => h(DocumentTextOutline) })
     },
     // Only show Team Management for admins and organization owners
     ...(canManageTeam ? [{
-      label: 'Team Management',
+      label: t('nav.teamManagement'),
       key: 'team',
       icon: () => h(NIcon, null, { default: () => h(PersonOutline) })
     }] : []),

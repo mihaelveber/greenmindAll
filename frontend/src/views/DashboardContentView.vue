@@ -2,6 +2,12 @@
   <div>
     <!-- Export Buttons Row -->
     <n-space :size="12" style="margin-bottom: 24px;">
+      <n-button type="success" @click="goToBulkProcessing">
+        <template #icon>
+          <n-icon :component="DocumentTextOutline" />
+        </template>
+        {{ t('dashboard.bulkProcessing') }}
+      </n-button>
       <n-button type="primary" @click="exportPDF" :loading="exportingPDF">
         <template #icon>
           <n-icon :component="DocumentTextOutline" />
@@ -19,9 +25,9 @@
     <n-grid :cols="1" :x-gap="24" :y-gap="24" responsive="screen">
       <!-- Active AI Tasks Monitor -->
       <n-gi v-if="activeTasks.length > 0">
-        <n-card title="🤖 Active AI Processing" :bordered="false">
+        <n-card :title="`🤖 ${t('dashboard.activeProcessing')}`" :bordered="false">
           <n-space vertical :size="16">
-            <n-text depth="3">{{ activeTasks.length }} task(s) in progress</n-text>
+            <n-text depth="3">{{ t('dashboard.tasksInProgress', { count: activeTasks.length }) }}</n-text>
             <n-space vertical :size="12">
               <div v-for="task in activeTasks" :key="task.task_id" class="task-item">
                 <n-space justify="space-between" align="center">
@@ -32,9 +38,18 @@
                       `Single: ${task.disclosure_code}`
                     }}</n-text>
                     <n-text depth="3" style="font-size: 12px;">
-                      {{ task.status === 'pending' ? 'Waiting to start...' :
-                         task.task_type === 'rag_processing' ? 'Processing document...' :
-                         `Processing ${task.completed_items}/${task.total_items}` }}
+                      {{ task.status === 'pending' ? t('dashboard.waitingToStart') :
+                         task.task_type === 'rag_processing' ? t('dashboard.processingDocument') :
+                         t('dashboard.processingCount', { completed: task.completed_items, total: task.total_items }) }}
+                    </n-text>
+                    <n-text v-if="task.current_step" depth="3" style="font-size: 12px;">
+                      {{ task.current_step }}
+                    </n-text>
+                    <n-text depth="3" style="font-size: 12px;">
+                      {{ t('dashboard.eta') }}: {{ formatTaskEta(task) }}
+                    </n-text>
+                    <n-text v-if="task.estimated_cost_usd !== null && task.estimated_cost_usd !== undefined" depth="3" style="font-size: 12px;">
+                      {{ t('dashboard.costSoFar') }}: ${{ task.estimated_cost_usd.toFixed(4) }}
                     </n-text>
                   </n-space>
                   <n-tag :type="task.status === 'running' ? 'info' : 'default'" size="small">
@@ -214,6 +229,7 @@ import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { useMessage, NGrid, NGi, NCard, NSpace, NText, NTag, NSpin, NProgress, NButton, NIcon } from 'naive-ui'
 import { DocumentTextOutline } from '@vicons/ionicons5'
+import { useI18n } from 'vue-i18n'
 import api from '../services/api'
 
 interface CategoryStatistic {
@@ -245,6 +261,9 @@ interface AITask {
   disclosure_code?: string
   standard_code?: string
   document_name?: string
+  current_step?: string | null
+  estimated_cost_usd?: number | null
+  total_tokens?: number | null
   created_at: string
   updated_at: string
 }
@@ -258,6 +277,7 @@ interface ConfidenceScore {
 
 const router = useRouter()
 const message = useMessage()
+const { t } = useI18n()
 
 const loadingStats = ref(false)
 const statistics = ref<CategoryStatistic[]>([])
@@ -317,6 +337,10 @@ const navigateToStandard = (standardType: string) => {
   router.push(`/standards/${standardType}`)
 }
 
+const goToBulkProcessing = () => {
+  router.push('/bulk-processing')
+}
+
 const loadActiveTasks = async () => {
   try {
     const previousTaskCount = activeTasks.value.length
@@ -348,6 +372,20 @@ const loadActiveTasks = async () => {
   } catch (error) {
     console.error('Failed to load active tasks:', error)
   }
+}
+
+const formatTaskEta = (task: AITask) => {
+  if (!task.created_at || !task.progress || task.progress <= 0) return 'Estimating...'
+  const start = new Date(task.created_at).getTime()
+  const now = Date.now()
+  const elapsedMs = Math.max(now - start, 0)
+  const totalMs = Math.round(elapsedMs / (task.progress / 100))
+  const remainingMs = Math.max(totalMs - elapsedMs, 0)
+  const seconds = Math.round(remainingMs / 1000)
+  const minutes = Math.floor(seconds / 60)
+  const secs = seconds % 60
+  if (minutes <= 0) return `${secs}s`
+  return `${minutes}m ${secs}s`
 }
 
 const animateProgress = () => {

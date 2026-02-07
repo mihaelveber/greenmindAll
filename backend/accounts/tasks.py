@@ -93,7 +93,15 @@ def cleanup_inactive_users():
 
 
 @shared_task(bind=True)
-def generate_ai_answer_task(self, disclosure_id: int, user_id: int, ai_temperature: float = 0.2, model_id: str = 'gpt-4o'):
+def generate_ai_answer_task(
+    self,
+    disclosure_id: int,
+    user_id: int,
+    ai_temperature: float = 0.2,
+    model_id: str = 'gpt-4o',
+    language: str | None = None,
+    parent_task_id: str | None = None
+):
     """
     Celery task za generiranje AI odgovora za eno disclosure točko
     Uses OpenAI Responses API with file_search tool for unlimited document size
@@ -316,8 +324,20 @@ If the documents contain data like percentages (e.g., 0.70 = 70%), present them 
             
             reasoning_summary = None
             
+            # Normalize language for responses
+            normalized_language = (language or 'en').lower()
+            if normalized_language.startswith('sl'):
+                language_name = 'Slovenian'
+            elif normalized_language.startswith('de'):
+                language_name = 'German'
+            else:
+                language_name = 'English'
+
             # System message for all models - GENERIC for all disclosure types
-            esrs_system_message = """You are an ESRS (European Sustainability Reporting Standards) expert helping companies prepare sustainability disclosures.
+            esrs_system_message = f"""You are an ESRS (European Sustainability Reporting Standards) expert helping companies prepare sustainability disclosures.
+
+LANGUAGE REQUIREMENT:
+- Respond in {language_name}. Always use {language_name} for the final answer.
 
 CRITICAL GUIDELINES:
 1. DOCUMENT-BASED ANSWERS ONLY
@@ -345,8 +365,13 @@ CRITICAL GUIDELINES:
    - Cite document sources when referencing specific data points
 
 If you cannot provide a complete answer based on available documents, clearly state what specific information is missing rather than providing partial or assumed content."""
-            
-            with OpenAIUsageTracker(user.id, org_owner.id, 'ai_answer', disclosure.id) as tracker:
+
+            task_metadata = {
+                "task_id": task_id,
+                "bulk_task_id": parent_task_id
+            }
+
+            with OpenAIUsageTracker(user.id, org_owner.id, 'ai_answer', disclosure.id, metadata=task_metadata) as tracker:
                 if is_o1_model:
                     # Use OpenAI Chat Completions API for o1/o3 models
                     # Note: o1 models don't support system messages or temperature
@@ -488,6 +513,9 @@ If you cannot provide a complete answer based on available documents, clearly st
             # Build simpler prompt without document context
             system_prompt = f"""You are an ESRS expert assistant.
 
+LANGUAGE REQUIREMENT:
+- Respond in {language_name}. Always use {language_name} for the final answer.
+
 CRITICAL: Without company-specific data, respond: "⚠️ INSUFFICIENT INFORMATION: This disclosure requires company-specific data including [list specific metrics/information needed]. Please upload relevant documentation."
 
 DO NOT provide generic industry guidance or examples as if they were company-specific answers.
@@ -509,7 +537,12 @@ If you must answer without documents, clearly state this is general guidance onl
             # Get organization owner for billing
             org_owner = user
             
-            with OpenAIUsageTracker(user.id, org_owner.id, 'ai_answer', disclosure.id) as tracker:
+            task_metadata = {
+                "task_id": task_id,
+                "bulk_task_id": parent_task_id
+            }
+
+            with OpenAIUsageTracker(user.id, org_owner.id, 'ai_answer', disclosure.id, metadata=task_metadata) as tracker:
                 response = client.chat.completions.create(
                     model="gpt-4o",
                     messages=[{"role": "user", "content": system_prompt}],
@@ -745,7 +778,14 @@ If you must answer without documents, clearly state this is general guidance onl
 
 
 @shared_task(bind=True)
-def generate_bulk_ai_answers_task(self, standard_id: int, user_id: int):
+def generate_bulk_ai_answers_task(
+    self,
+    standard_id: int,
+    user_id: int,
+    ai_temperature: float = 0.2,
+    model_id: str = 'gpt-4o',
+    language: str | None = None
+):
     """Celery task za generiranje AI odgovorov za VSE disclosure točke v standardu"""
     from accounts.models import ESRSStandard, ESRSDisclosure, User, AITaskStatus
     
@@ -775,8 +815,13 @@ def generate_bulk_ai_answers_task(self, standard_id: int, user_id: int):
         
         for disclosure in disclosures:
             try:
+                task_status.current_step = f"Processing {disclosure.code}: {disclosure.name}"
+                task_status.save()
+
                 # Generate AI answer for this disclosure
-                generate_ai_answer_task.apply(args=[disclosure.id, user_id])
+                generate_ai_answer_task.apply(
+                    args=[disclosure.id, user_id, ai_temperature, model_id, language, task_id]
+                )
                 completed += 1
                 
                 # Update progress

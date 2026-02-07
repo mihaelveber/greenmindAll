@@ -25,6 +25,10 @@
       </template>
     </n-page-header>
 
+    <n-alert v-if="websiteUrl" type="info" :bordered="false" style="margin-bottom: 16px;">
+      Primary website URL: {{ websiteUrl }}. Additional websites are listed below as separate website documents.
+    </n-alert>
+
     <n-card :bordered="false">
       <template #header>
         <div class="header-section">
@@ -498,6 +502,9 @@
       :bordered="false"
     >
       <n-space vertical :size="16">
+        <n-alert v-if="websiteUrl" type="info" :bordered="false">
+          Primary website URL currently set to: {{ websiteUrl }}
+        </n-alert>
         <n-alert type="info" :bordered="false">
           Add a new website as a global document. We'll automatically fetch and analyze the content for AI-generated answers.
         </n-alert>

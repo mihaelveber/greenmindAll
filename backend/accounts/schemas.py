@@ -56,6 +56,8 @@ class DocumentSchema(Schema):
     file_type: str
     uploaded_at: datetime
     is_global: bool = False
+    rag_processing_status: Optional[str] = None
+    rag_chunks_count: Optional[int] = None
     success: bool = True
 
 
@@ -125,6 +127,13 @@ class GetAIAnswerSchema(Schema):
     disclosure_id: int
     ai_temperature: float = 0.2
     model_id: str = 'gpt-4o'  # Default model
+    language: Optional[str] = None
+
+
+class BulkAIAnswerSchema(Schema):
+    ai_temperature: float = 0.2
+    model_id: str = 'gpt-4o'
+    language: Optional[str] = None
 
 
 class ESRSUserResponseSchema(Schema):
@@ -178,6 +187,8 @@ class AITaskStatusSchema(Schema):
     documents_used: Optional[int] = None
     chunks_used: Optional[int] = None
     confidence_score: Optional[float] = None
+    estimated_cost_usd: Optional[float] = None
+    total_tokens: Optional[int] = None
     reasoning_summary: Optional[str] = None  # AI reasoning from OpenAI o1 models
     
     created_at: datetime

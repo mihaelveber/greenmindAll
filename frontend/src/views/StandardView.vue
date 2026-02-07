@@ -22,17 +22,26 @@
                 </n-h2>
                 <n-text depth="3">{{ selectedStandard.description }}</n-text>
               </n-space>
-              <n-button 
-                type="primary" 
-                :loading="loadingBulkAI"
-                @click="startBulkAIGeneration"
-                size="large"
-              >
-                <template #icon>
-                  <n-icon :component="SparklesOutline" />
-                </template>
-                Get AI Answers for All
-              </n-button>
+              <n-space align="center" :size="8">
+                <n-text depth="3">{{ t('bulk.temperatureShort') }}</n-text>
+                <n-select
+                  v-model:value="bulkTemperature"
+                  :options="bulkTemperatureOptions"
+                  size="small"
+                  style="width: 120px;"
+                />
+                <n-button 
+                  type="primary" 
+                  :loading="loadingBulkAI"
+                  @click="startBulkAIGeneration"
+                  size="large"
+                >
+                  <template #icon>
+                    <n-icon :component="SparklesOutline" />
+                  </template>
+                  Get AI Answers for All
+                </n-button>
+              </n-space>
             </n-space>
           </template>
 
@@ -1386,6 +1395,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import {
   useMessage,
   NLayout,
@@ -1574,6 +1584,7 @@ interface UserDocument {
 
 const message = useMessage()
 const route = useRoute()
+const { locale, t } = useI18n()
 
 // Props
 const standardType = computed(() => route.params.standardType as string || 'ESRS')
@@ -1590,6 +1601,14 @@ const standardMetadata = computed(() => {
 const loading = ref(false)
 const loadingDetails = ref(false)
 const loadingBulkAI = ref(false)
+const bulkTemperature = ref(0.2)
+const bulkTemperatureOptions = [
+  { label: '0.0 (Factual)', value: 0.0 },
+  { label: '0.2 (Balanced)', value: 0.2 },
+  { label: '0.5 (Balanced)', value: 0.5 },
+  { label: '0.7 (Creative)', value: 0.7 },
+  { label: '1.0 (Creative)', value: 1.0 }
+]
 const showMobileMenu = ref(false)
 const categories = ref<ESRSCategory[]>([])
 const standards = ref<ESRSStandard[]>([])
@@ -1838,6 +1857,24 @@ const globalDocumentsForDisplay = computed(() => {
       is_excluded: false
     }))
 })
+
+const hasProcessingDocumentsForDisclosure = (disclosureId: number) => {
+  const linkedDocIds = (linkedDocuments.value[disclosureId] || []).map(ev => ev.document.id)
+  const excludedDocIds = (excludedDocuments.value[disclosureId] || []).map(ev => ev.document.id)
+  const globalDocIds = userDocuments.value
+    .filter(doc => doc.is_global && !excludedDocIds.includes(doc.id))
+    .map(doc => doc.id)
+
+  const relevantDocIds = new Set([...linkedDocIds, ...globalDocIds])
+
+  return Array.from(relevantDocIds).some(docId => {
+    const doc = userDocuments.value.find(d => d.id === docId)
+    return doc && ['pending', 'processing'].includes(doc.rag_processing_status || '')
+  })
+}
+
+const hasAnyProcessingDocuments = () =>
+  userDocuments.value.some(doc => ['pending', 'processing'].includes(doc.rag_processing_status || ''))
 
 const handleFileListUpdate = (fileList: UploadFileInfo[]) => {
   uploadFileList.value = fileList
@@ -2843,6 +2880,11 @@ const confirmExpensiveGeneration = async () => {
 }
 
 const generateAIAnswerNow = async (disclosure: ESRSDisclosure, modelId: string) => {
+  if (hasProcessingDocumentsForDisclosure(disclosure.id)) {
+    message.warning(t('bulk.errors.docsProcessingSingle'))
+    return
+  }
+
   loadingAI.value[disclosure.id] = true
   
   // Initialize thinking progress with empty steps (will be populated from backend)
@@ -2857,7 +2899,8 @@ const generateAIAnswerNow = async (disclosure: ESRSDisclosure, modelId: string) 
     const response = await api.post('/esrs/ai-answer', {
       disclosure_id: disclosure.id,
       ai_temperature: aiTemperatures.value[disclosure.id] ?? 0.2,
-      model_id: modelId  // Add model selection
+      model_id: modelId,  // Add model selection
+      language: locale.value
     })
     
     if (response.data.task_id) {
@@ -2904,8 +2947,17 @@ const startBulkAIGeneration = async () => {
   
   try {
     loadingBulkAI.value = true
+
+    if (hasAnyProcessingDocuments()) {
+      message.warning(t('bulk.errors.docsProcessing'))
+      return
+    }
     
-    const response = await api.post(`/esrs/bulk-ai-answer/${selectedStandard.value.id}`)
+    const response = await api.post(`/esrs/bulk-ai-answer/${selectedStandard.value.id}`, {
+      ai_temperature: bulkTemperature.value,
+      model_id: defaultAIModel.value,
+      language: locale.value
+    })
     
     if (response.data.task_id) {
       message.success(`Bulk AI generation started for ${selectedStandard.value.code}! Check Dashboard for progress.`)

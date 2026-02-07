@@ -12,7 +12,8 @@ from accounts.schemas import (
     AITaskStatusSchema, StartAITaskResponse, UpdateNotesSchema, GenerateImageSchema,
     StartConversationSchema, SendMessageSchema, SelectVersionSchema, ToggleChartSelectionSchema,
     StandardTypeSchema, CategoryWithProgressSchema, UpdateChartSchema, UpdateTableSchema,
-    ChartSelectionResponseSchema, WebsiteUrlSchema, AssignDisclosureSchema, UpdateRAGSettingsSchema
+    ChartSelectionResponseSchema, WebsiteUrlSchema, AssignDisclosureSchema, UpdateRAGSettingsSchema,
+    BulkAIAnswerSchema
 )
 from django.contrib.auth import get_user_model, authenticate
 from django.contrib.auth.hashers import make_password
@@ -26,6 +27,24 @@ import logging
 logger = logging.getLogger(__name__)
 
 User = get_user_model()
+
+
+def _get_task_usage_totals(task_id: str) -> tuple[float, int]:
+    """Aggregate token usage and cost for a task (single or bulk)."""
+    from accounts.token_models import TokenUsage
+
+    usage = TokenUsage.objects.filter(
+        models.Q(metadata__task_id=task_id) | models.Q(metadata__bulk_task_id=task_id)
+    )
+
+    totals = usage.aggregate(
+        total_cost=models.Sum('cost_usd'),
+        total_tokens=models.Sum('total_tokens')
+    )
+
+    total_cost = float(totals.get('total_cost') or 0)
+    total_tokens = int(totals.get('total_tokens') or 0)
+    return total_cost, total_tokens
 
 
 # ===== TEAM COLLABORATION HELPER FUNCTIONS =====
@@ -1441,7 +1460,9 @@ async def get_linked_documents(request, disclosure_id: int):
                 'file_size': evidence.document.file_size,
                 'file_type': evidence.document.file_type,
                 'uploaded_at': evidence.document.uploaded_at,
-                'is_global': evidence.document.is_global  # Include global flag
+                'is_global': evidence.document.is_global,  # Include global flag
+                'rag_processing_status': evidence.document.rag_processing_status,
+                'rag_chunks_count': evidence.document.rag_chunks_count
             },
             'linked_at': evidence.linked_at,
             'notes': evidence.notes
@@ -1474,7 +1495,9 @@ async def get_excluded_documents(request, disclosure_id: int):
                 'file_size': evidence.document.file_size,
                 'file_type': evidence.document.file_type,
                 'uploaded_at': evidence.document.uploaded_at,
-                'is_global': evidence.document.is_global
+                'is_global': evidence.document.is_global,
+                'rag_processing_status': evidence.document.rag_processing_status,
+                'rag_chunks_count': evidence.document.rag_chunks_count
             },
             'linked_at': evidence.linked_at,
             'notes': evidence.notes
@@ -1537,7 +1560,7 @@ async def get_ai_answer(request, data: GetAIAnswerSchema):
     from accounts.models import ESRSDisclosure, AITaskStatus
     from accounts.tasks import generate_ai_answer_task
 
-    logger.info(f"AI answer request: disclosure_id={data.disclosure_id}, model={data.model_id}, user={request.auth.id}")
+    logger.info(f"AI answer request: disclosure_id={data.disclosure_id}, model={data.model_id}, user={request.auth.id}, language={data.language}")
 
     try:
         # Verify disclosure exists
@@ -1562,7 +1585,7 @@ async def get_ai_answer(request, data: GetAIAnswerSchema):
 
         # Start Celery task with selected model (using pre-generated task_id)
         task = generate_ai_answer_task.apply_async(
-            args=(data.disclosure_id, request.auth.id, data.ai_temperature, data.model_id),
+            args=(data.disclosure_id, request.auth.id, data.ai_temperature, data.model_id, data.language, None),
             task_id=task_id
         )
         logger.info(f"AI answer task started: task_id={task.id}, disclosure={disclosure.code}, model={data.model_id}")
@@ -2227,7 +2250,7 @@ async def delete_version(request, version_id: str):
 
 
 @api.post("/esrs/bulk-ai-answer/{standard_id}", response=StartAITaskResponse, auth=JWTAuth())
-async def get_bulk_ai_answers(request, standard_id: int):
+async def get_bulk_ai_answers(request, standard_id: int, data: BulkAIAnswerSchema | None = None):
     """Zaženi Celery task za generiranje AI odgovorov za VSE disclosure točke v standardu"""
     from accounts.models import ESRSStandard, ESRSDisclosure, AITaskStatus
     from accounts.tasks import generate_bulk_ai_answers_task
@@ -2261,12 +2284,17 @@ async def get_bulk_ai_answers(request, standard_id: int):
         )
 
         # Now start Celery task with the pre-created task_id
+        payload = data or BulkAIAnswerSchema()
+
         task = generate_bulk_ai_answers_task.apply_async(
-            args=[standard_id, request.auth.id],
+            args=[standard_id, request.auth.id, payload.ai_temperature, payload.model_id, payload.language],
             task_id=task_id
         )
 
-        logger.info(f"Bulk AI task started: task_id={task.id}, standard={standard.code}, count={disclosure_count}, user={request.auth.id}")
+        logger.info(
+            f"Bulk AI task started: task_id={task.id}, standard={standard.code}, count={disclosure_count}, "
+            f"user={request.auth.id}, model={payload.model_id}, temp={payload.ai_temperature}, language={payload.language}"
+        )
 
         return StartAITaskResponse(
             task_id=task.id,
@@ -2292,6 +2320,8 @@ async def get_task_status(request, task_id: str):
         )(task_id=task_id, user=request.auth)
         
         # Prepare response with disclosure/standard codes
+        total_cost, total_tokens = _get_task_usage_totals(task_id)
+
         response_data = {
             'id': task_status.id,
             'task_id': task_status.task_id,
@@ -2311,6 +2341,8 @@ async def get_task_status(request, task_id: str):
             'chunks_used': task_status.chunks_used,
             'confidence_score': task_status.confidence_score,
             'reasoning_summary': task_status.reasoning_summary,  # AI reasoning from o1/Claude
+            'estimated_cost_usd': round(total_cost, 6),
+            'total_tokens': total_tokens,
             'created_at': task_status.created_at,
             'updated_at': task_status.updated_at
         }
@@ -2340,6 +2372,8 @@ async def get_active_tasks(request):
         # Prepare response
         result = []
         for task in active_tasks:
+            total_cost, total_tokens = _get_task_usage_totals(task.task_id)
+
             result.append(AITaskStatusSchema(
                 id=task.id,
                 task_id=task.task_id,
@@ -2353,6 +2387,15 @@ async def get_active_tasks(request):
                 disclosure_code=task.disclosure.code if task.disclosure else None,
                 standard_code=task.standard.code if task.standard else None,
                 document_name=task.document.file_name if task.document else None,
+                current_step=task.current_step,
+                steps_completed=task.steps_completed,
+                processing_steps=task.processing_steps,
+                documents_used=task.documents_used,
+                chunks_used=task.chunks_used,
+                confidence_score=task.confidence_score,
+                reasoning_summary=task.reasoning_summary,
+                estimated_cost_usd=round(total_cost, 6),
+                total_tokens=total_tokens,
                 created_at=task.created_at,
                 updated_at=task.updated_at
             ))

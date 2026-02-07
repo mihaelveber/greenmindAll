@@ -4,7 +4,14 @@ export default {
     documents: 'Documents',
     profile: 'Profile',
     settings: 'Settings',
-    logout: 'Logout'
+    logout: 'Logout',
+    esrsReporting: 'ESRS Reporting',
+    teamManagement: 'Team Management',
+    standardsReporting: '{standard} Reporting',
+    groupEsrs: 'ESRS',
+    groupEnvironmental: 'Environmental',
+    groupSocial: 'Social',
+    groupGovernance: 'Governance'
   },
   login: {
     title: 'Welcome Back',

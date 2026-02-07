@@ -2,17 +2,17 @@
   <div class="bulk-processing-container">
     <n-page-header class="page-header">
       <template #title>
-        <h1>🤖 Bulk AI Processing</h1>
+        <h1>🤖 {{ t('bulk.title') }}</h1>
       </template>
       <template #subtitle>
-        Generate AI answers for all disclosure requirements across all standards
+        {{ t('bulk.subtitle') }}
       </template>
     </n-page-header>
 
     <!-- Standards Selection -->
     <n-card :bordered="false" style="margin-bottom: 24px;">
       <template #header>
-        <n-text strong style="font-size: 16px;">Select Standards to Process</n-text>
+        <n-text strong style="font-size: 16px;">{{ t('bulk.selectStandards') }}</n-text>
       </template>
 
       <n-spin :show="loadingStandards">
@@ -30,6 +30,18 @@
 
       <n-divider />
 
+      <n-space align="center" :size="12" style="margin-bottom: 16px;">
+        <n-text strong>{{ t('bulk.temperature') }}</n-text>
+        <n-slider v-model:value="bulkTemperature" :min="0" :max="1" :step="0.1" style="width: 220px;" />
+        <n-text>{{ bulkTemperature.toFixed(1) }}</n-text>
+        <n-tag
+          :type="bulkTemperature <= 0.3 ? 'info' : bulkTemperature <= 0.7 ? 'warning' : 'error'"
+          size="small"
+        >
+          {{ bulkTemperature <= 0.3 ? t('bulk.tempFactual') : bulkTemperature <= 0.7 ? t('bulk.tempBalanced') : t('bulk.tempCreative') }}
+        </n-tag>
+      </n-space>
+
       <n-space justify="space-between" align="center">
         <n-space align="center">
           <n-button
@@ -42,7 +54,7 @@
             <template #icon>
               <n-icon :component="PlayOutline" />
             </template>
-            Start Bulk Processing
+            {{ t('bulk.start') }}
           </n-button>
           <n-button
             v-if="processing"
@@ -53,12 +65,13 @@
             <template #icon>
               <n-icon :component="StopOutline" />
             </template>
-            Stop Processing
+            {{ t('bulk.stop') }}
           </n-button>
         </n-space>
         <n-space align="center">
-          <n-text depth="3">Select All:</n-text>
-          <n-switch v-model:value="selectAll" @update:value="handleSelectAll" />
+          <n-checkbox v-model:checked="selectAll" @update:checked="handleSelectAll">
+            {{ t('bulk.selectAllOnce') }}
+          </n-checkbox>
         </n-space>
       </n-space>
     </n-card>
@@ -66,15 +79,15 @@
     <!-- Progress Overview -->
     <n-card v-if="processing || taskHistory.length > 0" :bordered="false" style="margin-bottom: 24px;">
       <template #header>
-        <n-text strong style="font-size: 16px;">Processing Progress</n-text>
+        <n-text strong style="font-size: 16px;">{{ t('bulk.progressTitle') }}</n-text>
       </template>
 
       <n-space vertical :size="24">
         <!-- Overall Progress -->
         <div>
           <n-space justify="space-between" style="margin-bottom: 8px;">
-            <n-text strong>Overall Progress</n-text>
-            <n-text>{{ completedTasks }} / {{ totalTasks }} standards completed</n-text>
+            <n-text strong>{{ t('bulk.overallProgress') }}</n-text>
+            <n-text>{{ completedTasks }} / {{ totalTasks }} {{ t('bulk.standardsCompleted') }}</n-text>
           </n-space>
           <n-progress
             type="line"
@@ -94,7 +107,14 @@
                 {{ task.status }}
               </n-tag>
             </n-space>
-            <n-text depth="3">{{ task.completed_items }} / {{ task.total_items }} requirements</n-text>
+            <n-text depth="3">{{ task.completed_items }} / {{ task.total_items }} {{ t('bulk.requirements') }}</n-text>
+          </n-space>
+          <n-space vertical :size="4" style="margin-bottom: 8px;">
+            <n-text v-if="task.current_step" depth="3">{{ t('bulk.currentStep') }}: {{ task.current_step }}</n-text>
+            <n-text depth="3">{{ t('bulk.eta') }}: {{ formatTaskEta(task) }}</n-text>
+            <n-text v-if="task.estimated_cost_usd !== null && task.estimated_cost_usd !== undefined" depth="3">
+              {{ t('bulk.costSoFar') }}: ${{ task.estimated_cost_usd.toFixed(4) }}
+            </n-text>
           </n-space>
           <n-progress
             :percentage="task.progress"
@@ -108,7 +128,7 @@
     <!-- Task History -->
     <n-card v-if="taskHistory.length > 0" :bordered="false">
       <template #header>
-        <n-text strong style="font-size: 16px;">Processing History</n-text>
+        <n-text strong style="font-size: 16px;">{{ t('bulk.historyTitle') }}</n-text>
       </template>
 
       <n-data-table
@@ -121,7 +141,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, h } from 'vue'
+import { ref, computed, onMounted, onUnmounted, h, watch } from 'vue'
 import {
   useMessage,
   NCard,
@@ -135,15 +155,17 @@ import {
   NProgress,
   NTag,
   NSpin,
-  NSwitch,
+  NSlider,
   NDataTable,
   NIcon,
   type DataTableColumns
 } from 'naive-ui'
 import { PlayOutline, StopOutline, CheckmarkCircle, CloseCircle } from '@vicons/ionicons5'
+import { useI18n } from 'vue-i18n'
 import api from '../services/api'
 
 const message = useMessage()
+const { locale, t } = useI18n()
 
 interface Standard {
   type: string
@@ -162,6 +184,9 @@ interface AITask {
   progress: number
   completed_items: number
   total_items: number
+  current_step?: string | null
+  estimated_cost_usd?: number | null
+  total_tokens?: number | null
   created_at: string
 }
 
@@ -177,6 +202,7 @@ const loadingStandards = ref(false)
 const availableStandards = ref<Standard[]>([])
 const selectedStandards = ref<string[]>([])
 const selectAll = ref(false)
+const bulkTemperature = ref(0.2)
 const processing = ref(false)
 const activeTasks = ref<AITask[]>([])
 const taskHistory = ref<TaskHistoryItem[]>([])
@@ -191,12 +217,12 @@ const overallProgress = computed(() => {
 
 const historyColumns: DataTableColumns<TaskHistoryItem> = [
   {
-    title: 'Standard',
+    title: t('bulk.historyStandard'),
     key: 'standard_code',
     width: 150
   },
   {
-    title: 'Status',
+    title: t('bulk.historyStatus'),
     key: 'status',
     width: 120,
     render: (row) => {
@@ -204,17 +230,17 @@ const historyColumns: DataTableColumns<TaskHistoryItem> = [
         type: row.success ? 'success' : 'error',
         size: 'small'
       }, {
-        default: () => row.success ? 'Completed' : 'Failed'
+        default: () => row.success ? t('bulk.historyCompleted') : t('bulk.historyFailed')
       })
     }
   },
   {
-    title: 'Requirements Processed',
+    title: t('bulk.historyRequirementsProcessed'),
     key: 'total_items',
     width: 180
   },
   {
-    title: 'Completed At',
+    title: t('bulk.historyCompletedAt'),
     key: 'completed_at',
     render: (row) => new Date(row.completed_at).toLocaleString()
   }
@@ -226,7 +252,7 @@ const loadStandards = async () => {
     const response = await api.get('/standards/types')
     availableStandards.value = response.data
   } catch (error: any) {
-    message.error('Failed to load standards')
+    message.error(t('bulk.errors.loadStandards'))
     console.error(error)
   } finally {
     loadingStandards.value = false
@@ -241,9 +267,44 @@ const handleSelectAll = (value: boolean) => {
   }
 }
 
+watch(selectedStandards, (newValue) => {
+  if (availableStandards.value.length === 0) return
+  selectAll.value = newValue.length === availableStandards.value.length
+})
+
+const formatTaskEta = (task: AITask) => {
+  if (!task.created_at || !task.progress || task.progress <= 0) return 'Estimating...'
+  const start = new Date(task.created_at).getTime()
+  const now = Date.now()
+  const elapsedMs = Math.max(now - start, 0)
+  const totalMs = Math.round(elapsedMs / (task.progress / 100))
+  const remainingMs = Math.max(totalMs - elapsedMs, 0)
+  const seconds = Math.round(remainingMs / 1000)
+  const minutes = Math.floor(seconds / 60)
+  const secs = seconds % 60
+  if (minutes <= 0) return `${secs}s`
+  return `${minutes}m ${secs}s`
+}
+
+const hasProcessingDocuments = async () => {
+  try {
+    const response = await api.get('/documents/list')
+    const docs = response.data || []
+    return docs.some((doc: any) => ['pending', 'processing'].includes(doc.rag_processing_status))
+  } catch (error) {
+    return false
+  }
+}
+
 const startBulkProcessing = async () => {
   if (selectedStandards.value.length === 0) {
-    message.warning('Please select at least one standard')
+    message.warning(t('bulk.errors.selectAtLeastOne'))
+    return
+  }
+
+  const processingDocs = await hasProcessingDocuments()
+  if (processingDocs) {
+    message.warning(t('bulk.errors.docsProcessing'))
     return
   }
 
@@ -263,7 +324,7 @@ const startBulkProcessing = async () => {
         const esrsStandards = response.data
 
         if (esrsStandards.length === 0) {
-          message.warning('No ESRS standards found')
+            message.warning(t('bulk.errors.noEsrsStandards'))
           continue
         }
 
@@ -273,16 +334,20 @@ const startBulkProcessing = async () => {
         for (const standard of esrsStandards) {
           console.log(`Starting bulk processing for standard ${standard.code} (ID: ${standard.id})`)
           try {
-            await api.post(`/esrs/bulk-ai-answer/${standard.id}`)
-            message.success(`Started processing for ${standard.code}`)
+            await api.post(`/esrs/bulk-ai-answer/${standard.id}`, {
+              ai_temperature: bulkTemperature.value,
+              model_id: 'gpt-4o',
+              language: locale.value
+            })
+            message.success(t('bulk.startedProcessing', { code: standard.code }))
           } catch (err: any) {
             console.error(`Failed to start processing for ${standard.code}:`, err)
-            message.error(`Failed to start ${standard.code}: ${err.response?.data?.message || err.message}`)
+            message.error(t('bulk.errors.failedToStart', { code: standard.code, reason: err.response?.data?.message || err.message }))
           }
         }
       } else {
         // For other standard types, get the standards of that type
-        message.warning(`Bulk processing for ${standardType} not yet implemented`)
+        message.warning(t('bulk.errors.notImplemented', { type: standardType }))
       }
     }
 
@@ -291,7 +356,7 @@ const startBulkProcessing = async () => {
       startPolling()
     }
   } catch (error: any) {
-    message.error(`Failed to start bulk processing: ${error.response?.data?.message || error.message}`)
+    message.error(t('bulk.errors.startFailed', { reason: error.response?.data?.message || error.message }))
     console.error('Bulk processing error:', error)
     processing.value = false
   }
@@ -300,7 +365,7 @@ const startBulkProcessing = async () => {
 const stopBulkProcessing = () => {
   processing.value = false
   stopPolling()
-  message.info('Processing stopped')
+  message.info(t('bulk.stopped'))
 }
 
 const loadActiveTasks = async () => {
